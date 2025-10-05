@@ -4,9 +4,10 @@ from queue import Queue, Empty
 
 class SimSerial:
 
-    def __init__(self):
+    def __init__(self, baudrate=115200):
         self.rx = Queue()
         self.is_open = False
+        self.baudrate = baudrate
 
     def open(self):
         self.is_open = True
