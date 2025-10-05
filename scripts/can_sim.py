@@ -5,7 +5,6 @@
 # Data - max size of 8
 # End of frame (0xBB)
 
-import time
 import yaml
 from pathlib import Path
 
@@ -16,15 +15,12 @@ class CanMessageSimulator:
     def __init__(self):
         pass
 
-    def send_datagram(self, yaml_name: str):
+    def gen_datagram(self, yaml_name: str):
         yaml_file = Path(__file__).parent / f"../boards/{yaml_name}.yaml"
         with open(yaml_file, 'r') as file:
             data = yaml.safe_load(file)
 
-        print(data)
-
         chunks = []
-
 
         for name, message in data["Messages"].items():
             chunks.append(DATAGRAM_SOF.to_bytes(2, byteorder="big"))

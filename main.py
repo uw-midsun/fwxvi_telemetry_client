@@ -5,12 +5,12 @@ if __name__ == "__main__":
     sim = SimSerial()
     canSim = CanMessageSimulator()
 
-    print(canSim.send_datagram("imu").hex())
+    boards = ["front_controller", "imu", "rear_controller", "steering"]
 
+    sim.open()
 
+    for board in boards:
+        sim.feed(canSim.gen_datagram(board))
 
-    # sim.open()
-    # sim.feed(b"HELLO,123")
-
-    # while 1:
-    #     print("READING:", sim.read())
+    while 1:
+        print("READING:", sim.read())
