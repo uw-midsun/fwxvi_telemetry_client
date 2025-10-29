@@ -7,4 +7,9 @@ prerequisites:
 
 - install docker
 - run two docker apps (influx & grafana)
-- pip install influxdb-client
+
+`docker compose up -d`
+
+for scripts to work:
+
+`pip install influxdb-client`
