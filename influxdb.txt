@@ -1,0 +1,24 @@
+run in powershell:
+
+docker run -d --name fwxvi_telemetry_influxdb2 `
+-p 8087:8086 `
+-v "$PWD\influxdb-data:/var/lib/influxdb2" `
+-e DOCKER_INFLUXDB_INIT_MODE=setup `
+-e DOCKER_INFLUXDB_INIT_USERNAME=admin `
+-e DOCKER_INFLUXDB_INIT_PASSWORD=localonly `
+-e DOCKER_INFLUXDB_INIT_ORG=local-org `
+-e DOCKER_INFLUXDB_INIT_BUCKET=telemetry `
+-e DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=local-token `
+influxdb:2.7
+
+check values:
+
+docker inspect fwxvi_telemetry_influxdb2
+
+docker inspect fwxvi_telemetry_client-influxdb-1 > influxdb_info.json
+
+show all containers:
+docker ps -a
+
+remove container:
+docker rm -f <name>
