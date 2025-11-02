@@ -8,7 +8,7 @@ if __name__ == "__main__":
     sim = SimSerial()
     canSim = CanMessageSimulator()
 
-    boards = ["front_controller", "imu", "rear_controller", "steering"]
+    boards = ["front_controller", "imu", "rear_controller", "steering", "telemetry"]
 
     sim.open()
 
