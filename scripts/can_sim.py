@@ -19,7 +19,7 @@ class CanMessageSimulator:
     def __init__(self):
         self.board_idx = 0
         self.fake_data = {}
-        self.num_boards = 0
+        self.num_packets = 0
         self.has_read_config = False
         pass
     
@@ -40,8 +40,8 @@ class CanMessageSimulator:
                 field["signals"] = datagram
                 self.fake_data[name] = field
             
-        self.num_boards = len(config_files)
-        self.has_read_config = True    
+        self.num_packets = len(self.fake_data)
+        self.has_read_config = True
 
     def gen_datagram(self):
         index = 0
@@ -51,7 +51,7 @@ class CanMessageSimulator:
                 continue
             
             self.board_idx += 1
-            self.board_idx %= self.num_boards
+            self.board_idx %= self.num_packets
             
             chunks = []
             chunks.append(DATAGRAM_SOF.to_bytes(2, byteorder="big"))

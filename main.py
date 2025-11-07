@@ -21,7 +21,6 @@ if __name__ == "__main__":
     index = 0
 
     try:
-
         while 1:
             index += 1
             
