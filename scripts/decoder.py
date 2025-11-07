@@ -33,7 +33,8 @@ class Decoder:
         
         self.state = State.SOF
         self.datagram = None
-        self.buffer = [] 
+        self.buffer = []
+        self.decoded_data = {}
 
     def reset_buffer(self):
         self.buffer = []
@@ -46,8 +47,8 @@ class Decoder:
         except IndexError:
             return False
         if self.parse_byte(byte):
-            print(self.datagram)
-            print(self.decode_datagram())
+            datagram, parent_name = self.decode_datagram()
+            self.decoded_data[parent_name] = datagram
         return True
     
     def decode_datagram(self):
@@ -55,7 +56,8 @@ class Decoder:
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
         decoded_data.length = self.datagram["DLC"]
-        decoded_data.config_path = self.resolve_id_to_config_path(decoded_data.idx)
+        decoded_data.config_path, parent_name = self.resolve_id_to_config_path(decoded_data.idx)
+        parent_name = parent_name.replace(".yaml", "")
 
         with open(decoded_data.config_path, 'r') as file:
             data = yaml.safe_load(file)
@@ -76,7 +78,7 @@ class Decoder:
                     offset_b += current_length_b
                     decoded_data.data[config_name] = m_data
 
-        return decoded_data.data
+        return decoded_data.data, parent_name
 
     def parse_byte(self, byte):
         if self.state == State.SOF or self.state == State.VALID:
@@ -120,5 +122,5 @@ class Decoder:
 
             for name, message in data["Messages"].items():
                 if message["id"] == id:
-                    return path
-        return "no path resolved"
+                    return path, filename
+        return "no path resolved", ""

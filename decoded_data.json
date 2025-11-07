@@ -1,0 +1,88 @@
+{
+ "front_controller": {
+  "percentage": {
+   "len": 32,
+   "value": 19
+  },
+  "brake_enabled": {
+   "len": 8,
+   "value": 21
+  }
+ },
+ "imu": {
+  "x_axis": {
+   "len": 16,
+   "value": 19
+  },
+  "y_axis": {
+   "len": 16,
+   "value": 21
+  },
+  "z_axis": {
+   "len": 16,
+   "value": 4
+  }
+ },
+ "rear_controller": {
+  "id": {
+   "len": 8,
+   "value": 19
+  },
+  "temperature_0": {
+   "len": 8,
+   "value": 21
+  },
+  "temperature_1": {
+   "len": 8,
+   "value": 4
+  },
+  "temperature_2": {
+   "len": 8,
+   "value": 55
+  },
+  "temperature_3": {
+   "len": 8,
+   "value": 2
+  },
+  "temperature_4": {
+   "len": 8,
+   "value": 7
+  },
+  "temperature_5": {
+   "len": 8,
+   "value": 43
+  },
+  "temperature_6": {
+   "len": 8,
+   "value": 88
+  }
+ },
+ "steering": {
+  "target_velocity": {
+   "len": 32,
+   "value": 19
+  },
+  "drive_state": {
+   "len": 8,
+   "value": 21
+  },
+  "cruise_control": {
+   "len": 8,
+   "value": 4
+  },
+  "regen_braking": {
+   "len": 8,
+   "value": 55
+  },
+  "hazard_enabled": {
+   "len": 8,
+   "value": 2
+  }
+ },
+ "telemetry": {
+  "telemetry_data": {
+   "len": 64,
+   "value": 19
+  }
+ }
+}

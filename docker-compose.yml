@@ -1,11 +1,9 @@
-version: "3.8"
-
 services:
   influxdb:
     image: influxdb:2.7
     container_name: fwxvi_telemetry_influxdb2
     ports:
-      - "${INFLUXDB_HTTP_PORT}:8086"         # host:container
+      - "${INFLUXDB_HTTP_PORT-8087}:8086"         # host:container
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_INIT_USERNAME}

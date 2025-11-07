@@ -3,6 +3,7 @@ from scripts.can_sim import CanMessageSimulator
 from scripts.decoder import Decoder
 import time
 import scripts.db_write as dbw
+import json
 
 if __name__ == "__main__":
     sim = SimSerial()
@@ -12,13 +13,32 @@ if __name__ == "__main__":
 
     sim.open()
 
-    for board in boards:
-        sim.feed(canSim.gen_datagram(board))
+    canSim.read_config(boards)
+    
 
     decoder = Decoder(ser=sim)
 
-    while 1:
-        decoder.read()
+    index = 0
+
+    try:
+
+        while 1:
+            index += 1
+            
+            if index % 25 == 0:
+                sim.feed(canSim.gen_datagram(), paced=True)
+            decoder.read()
+            if decoder.read() == True:
+                dbw.write_dict(decoder.decoded_data)
+    
+    except KeyboardInterrupt:
+        dbw.write.flush()
+        dbw.client.close()
+    
+    # with open("decoded_data.json", "w") as file:
+    #     json.dump(decoder.decoded_data, file, indent=1)
+
+    #     dbw.write_dict(decoder.decoded_data)
 
     # try:
     #     for i in range(50):
@@ -26,5 +46,3 @@ if __name__ == "__main__":
     #         print(i)
     #         time.sleep(0.05)
     # finally:
-    #     dbw.write.flush()
-    #     dbw.client.close()
