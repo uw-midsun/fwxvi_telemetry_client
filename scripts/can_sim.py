@@ -25,7 +25,6 @@ class CanMessageSimulator:
     
     def read_config(self, config_files:list):
         
-        
         for file_name in config_files:
             yaml_file = Path(__file__).parent / f"../boards/{file_name}.yaml"
             with open(yaml_file, 'r') as file:
@@ -79,7 +78,7 @@ class CanMessageSimulator:
                     signal_data["value"] = 0
                     chunks.append(signal_data["value"].to_bytes(int(signal_data["length"] / 8), byteorder="big"))
                     
-                random_inc = randint(-5, 20)
+                random_inc = randint(int(-1 * signal_data["value"] * 0.1) - 5, int(10 / max(signal_data["value"], 1)) + 5)
                 signal_data["value"] += random_inc
                 if signal_data["value"] < 0:
                     signal_data["value"] *= -1
@@ -87,34 +86,5 @@ class CanMessageSimulator:
             chunks.append(DATAGRAM_EOF.to_bytes(1, byteorder="big"))
 
             out = b"".join(chunks)
+            print(out)
             return out
-        
-        # for name, message in data["Messages"].items():
-        #     chunks.append(DATAGRAM_SOF.to_bytes(2, byteorder="big"))
-        #     chunks.append(message['id'].to_bytes(2, byteorder="big"))
-
-        #     total_length = 0
-        #     for signal_name, signal_data in message["signals"].items():
-        #         total_length += signal_data["length"]
-
-        #     if total_length % 8 == 0:
-        #         total_length = (int) (total_length / 8)
-        #     else:
-        #         raise Exception("Invalid length")
-                
-
-        #     chunks.append(total_length.to_bytes(1, byteorder="big"))
-
-        #     index = 0
-
-        #     for signal_name, signal_data in message["signals"].items():
-        #         if signal_data["length"] % 8 != 0:
-        #             raise Exception("Invalid length")
-                
-        #         chunks.append(outputnums[index].to_bytes(int(signal_data["length"] / 8), byteorder="big"))
-        #         index += 1
-            
-        #     chunks.append(DATAGRAM_EOF.to_bytes(1, byteorder="big"))
-
-        # out = b"".join(chunks)
-        # return out

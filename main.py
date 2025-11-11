@@ -14,23 +14,20 @@ if __name__ == "__main__":
     sim.open()
 
     canSim.read_config(boards)
-    
-
     decoder = Decoder(ser=sim)
+    decoder.enable_write_to_db()
 
     index = 0
 
     try:
         while 1:
             index += 1
-            
-            if index % 25 == 0:
+            if index % 10 == 0:
                 sim.feed(canSim.gen_datagram(), paced=True)
             decoder.read()
-            if decoder.read() == True:
-                dbw.write_dict(decoder.decoded_data)
     
     except KeyboardInterrupt:
+        print(decoder.decoded_data)
         dbw.write.flush()
         dbw.client.close()
     

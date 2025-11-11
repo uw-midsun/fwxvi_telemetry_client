@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import yaml
 from dataclasses import dataclass, field
+import scripts.db_write as dbw
 
 DATAGRAM_SOF = b'\xaa'
 DATAGRAM_EOF = b'\xbb'
@@ -35,6 +36,13 @@ class Decoder:
         self.datagram = None
         self.buffer = []
         self.decoded_data = {}
+        self.isWriteToDb = False
+
+    def enable_write_to_db(self):
+        self.isWriteToDb = True
+        
+    def disable_write_to_db(self):
+        self.isWriteToDb = False
 
     def reset_buffer(self):
         self.buffer = []
@@ -47,12 +55,10 @@ class Decoder:
         except IndexError:
             return False
         if self.parse_byte(byte):
-            datagram, parent_name = self.decode_datagram()
-            self.decoded_data[parent_name] = datagram
+            self.decode_datagram()
         return True
     
     def decode_datagram(self):
-        data = self.datagram
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
         decoded_data.length = self.datagram["DLC"]
@@ -60,11 +66,11 @@ class Decoder:
         parent_name = parent_name.replace(".yaml", "")
 
         with open(decoded_data.config_path, 'r') as file:
-            data = yaml.safe_load(file)
+            data_yaml = yaml.safe_load(file)
 
         offset_b = 0
 
-        for name, message in data["Messages"].items():
+        for name, message in data_yaml["Messages"].items():
             if message["id"] == decoded_data.idx:
                 for config_name, config_data in message["signals"].items():
                     m_data = {}
@@ -77,8 +83,9 @@ class Decoder:
                     m_data["value"] = int.from_bytes(self.datagram["DATA"][offset_b:offset_b+current_length_b])
                     offset_b += current_length_b
                     decoded_data.data[config_name] = m_data
-
-        return decoded_data.data, parent_name
+            self.decoded_data[name] = decoded_data.data
+            if self.isWriteToDb:
+                dbw.write_dict(name, decoded_data.data, verbosity=False)
 
     def parse_byte(self, byte):
         if self.state == State.SOF or self.state == State.VALID:

@@ -11,12 +11,12 @@ client = InfluxDBClient(url=URL, token=TOKEN, org=ORG)
 
 write = client.write_api(write_options=SYNCHRONOUS)
 
-def write_dict(data: dict):
+def write_dict(name: str, data: dict, verbosity: bool):
     
-    for field_name, fields in data.items():
-        for value_name, info in fields.items():
-            print(f"{field_name} -> {value_name} = {info["value"]}")
-            p = (Point(field_name)
-                .field(value_name, info["value"])
-                .time(datetime.now(timezone.utc)))
-            write.write(bucket=BUCKET, org=ORG, record=p)
+    for field_name, info in data.items():
+        if verbosity:
+            print(f"{name} -> {field_name} = {info["value"]}")
+        p = (Point(name)
+            .field(field_name, info["value"])
+            .time(datetime.now(timezone.utc)))
+        write.write(bucket=BUCKET, org=ORG, record=p)
