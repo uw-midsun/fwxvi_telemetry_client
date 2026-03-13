@@ -153,7 +153,6 @@ class Decoder:
                 # print(message_id)
                 if not id_list.__contains__(message_id):
                     id_list.append(message_id)
-
                 # print(id_list)
                 self.datagram = {"id": message_id}
                 # print(f"ID: {self.datagram["id"]} | DEVICE: {self.datagram["device"]}")

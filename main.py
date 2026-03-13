@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
-
+from scripts.sim.sim_serial import SimSerial
+from scripts.sim.can_sim import CanMessageSimulator
 from scripts.decoder import Decoder
 import scripts.db_write as dbw
 from scripts.sim.sim_from_log import SimFromLog
