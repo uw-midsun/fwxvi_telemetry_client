@@ -1,31 +1,25 @@
-from scripts.sim_serial import SimSerial
-from scripts.can_sim import CanMessageSimulator
+from scripts.sim.sim_serial import SimSerial
+from scripts.sim.can_sim import CanMessageSimulator
 from scripts.decoder import Decoder
 import time
 import scripts.db_write as dbw
 import json
 
 if __name__ == "__main__":
-    sim = SimSerial()
-    canSim = CanMessageSimulator()
+    # sim = SimSerial()
+    # canSim = CanMessageSimulator()
 
-    boards = ["front_controller", "imu", "rear_controller", "steering", "telemetry"]
+    # boards = ["front_controller", "imu", "rear_controller", "steering", "telemetry"]
 
-    sim.open()
+    # sim.open()
 
-    canSim.read_config(boards)
-    decoder = Decoder(ser=sim)
-    decoder.enable_write_to_db()
-
-    index = 0
+    # canSim.read_config(boards)
+    decoder = Decoder(port="COM9", baudrate=115200, ser=None)
+    # decoder.enable_write_to_db()
 
     try:
         while 1:
-            index += 1
-            if index % 10 == 0:
-                sim.feed(canSim.gen_datagram(), paced=True)
             decoder.read()
-    
     except KeyboardInterrupt:
         print(decoder.decoded_data)
         dbw.write.flush()

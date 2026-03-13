@@ -1,0 +1,245 @@
+messages:
+
+  - id: 1861
+    name: telemetry
+    dlc: 8
+    signals:
+      - name: telemetry_data
+        start_bit: 0
+        length: 64
+
+  - id: 1361
+    name: front_controller_pedal
+    dlc: 5
+    signals:
+      - name: percentage
+        start_bit: 0
+        length: 32
+      - name: drive_state
+        start_bit: 32
+        length: 3
+      - name: brake_enabled
+        start_bit: 35
+        length: 1
+      - name: regen_enabled
+        start_bit: 36
+        length: 1
+
+  - id: 1377
+    name: motor_velocity
+    dlc: 8
+    signals:
+      - name: vehicle_velocity
+        start_bit: 0
+        length: 32
+      - name: motor_velocity
+        start_bit: 32
+        length: 32
+
+  - id: 1393
+    name: motor_temperature
+    dlc: 8
+    signals:
+      - name: heat_sink_temp
+        start_bit: 0
+        length: 32
+      - name: motor_temp
+        start_bit: 32
+        length: 32
+
+  - id: 1521
+    name: fc_power_group_A
+    dlc: 8
+    signals:
+      - name: rev_cam_current
+        start_bit: 0
+        length: 16
+      - name: telem_current
+        start_bit: 16
+        length: 16
+      - name: steering_current
+        start_bit: 32
+        length: 16
+      - name: driver_fan_current
+        start_bit: 48
+        length: 16
+
+  - id: 1569
+    name: fc_power_lights_group
+    dlc: 8
+    signals:
+      - name: brake_light_sig_current
+        start_bit: 0
+        length: 16
+      - name: bps_light_sig_current
+        start_bit: 16
+        length: 16
+      - name: right_sig_current
+        start_bit: 32
+        length: 16
+      - name: left_sig_current
+        start_bit: 48
+        length: 16
+
+  - id: 1617
+    name: fc_power_group_B
+    dlc: 4
+    signals:
+      - name: horn_current
+        start_bit: 0
+        length: 16
+      - name: spare_current
+        start_bit: 16
+        length: 16
+
+  - id: 19
+    name: rear_controller_status
+    dlc: 2
+    signals:
+      - name: bps_fault
+        start_bit: 0
+        length: 11
+      - name: relay_state
+        start_bit: 11
+        length: 1
+      - name: power_state
+        start_bit: 12
+        length: 1
+      - name: afe_status
+        start_bit: 13
+        length: 1
+      - name: motor_precharge_complete
+        start_bit: 14
+        length: 1
+
+  - id: 35
+    name: battery_stats_A
+    dlc: 6
+    signals:
+      - name: pack_voltage
+        start_bit: 0
+        length: 16
+      - name: pack_current
+        start_bit: 16
+        length: 16
+      - name: pack_soc
+        start_bit: 32
+        length: 16
+
+  - id: 51
+    name: battery_stats_B
+    dlc: 6
+    signals:
+      - name: max_cell_voltage
+        start_bit: 0
+        length: 16
+      - name: min_cell_voltage
+        start_bit: 16
+        length: 16
+      - name: max_temperature
+        start_bit: 32
+        length: 16
+
+  - id: 67
+    name: power_input_stats
+    dlc: 8
+    signals:
+      - name: input_dcdc_voltage
+        start_bit: 0
+        length: 16
+      - name: input_dcdc_current
+        start_bit: 16
+        length: 16
+      - name: input_aux_voltage
+        start_bit: 32
+        length: 16
+      - name: input_aux_current
+        start_bit: 48
+        length: 16
+
+  - id: 1842
+    name: gyro_data
+    dlc: 6
+    signals:
+      - name: x_axis
+        start_bit: 0
+        length: 16
+      - name: y_axis
+        start_bit: 16
+        length: 16
+      - name: z_axis
+        start_bit: 32
+        length: 16
+
+  - id: 1826
+    name: accel_data
+    dlc: 6
+    signals:
+      - name: x_axis
+        start_bit: 0
+        length: 16
+      - name: y_axis
+        start_bit: 16
+        length: 16
+      - name: z_axis
+        start_bit: 32
+        length: 16
+
+  - id: 1904
+    name: fast_one_shot_msg
+    dlc: 4
+    signals:
+      - name: sig1
+        start_bit: 0
+        length: 16
+      - name: sig2
+        start_bit: 16
+        length: 16
+
+  - id: 1888
+    name: medium_one_shot_msg
+    dlc: 4
+    signals:
+      - name: sig1
+        start_bit: 0
+        length: 16
+      - name: sig2
+        start_bit: 16
+        length: 16
+
+  - id: 1872
+    name: slow_one_shot_msg
+    dlc: 4
+    signals:
+      - name: sig1
+        start_bit: 0
+        length: 16
+      - name: sig2
+        start_bit: 16
+        length: 16
+
+  - id: 100
+    name: steering
+    dlc: 5
+    signals:
+      - name: cruise_control_target_velocity
+        start_bit: 0
+        length: 32
+      - name: drive_state
+        start_bit: 32
+        length: 2
+      - name: lights
+        start_bit: 34
+        length: 2
+      - name: cruise_control_enabled
+        start_bit: 36
+        length: 1
+      - name: hazard_enabled
+        start_bit: 37
+        length: 1
+      - name: horn_enabled
+        start_bit: 38
+        length: 1
+      - name: regen_enabled
+        start_bit: 39
+        length: 1
