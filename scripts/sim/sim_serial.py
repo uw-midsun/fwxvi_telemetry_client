@@ -24,7 +24,7 @@ class SimSerial:
 
 
     def read(self, size=1):
-        if self.is_open != True:
+        if not self.is_open:
             raise Exception("Serial port not open yet...")
         
         chunks = []

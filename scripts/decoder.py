@@ -176,7 +176,7 @@ class Decoder:
         return self.state == State.VALID
     
     def resolve_id_to_config_path(self, id):
-        directory = Path(__file__).parent / f"../boards"
+        directory = Path(__file__).parent / "../boards"
 
         for filename in os.listdir(directory):
             path = os.path.join(directory, filename)
