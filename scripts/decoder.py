@@ -91,11 +91,8 @@ class Decoder:
         message_name = matched_message["name"]
         
 
-        # Convert raw payload bytes to a single little-endian integer.
-        # This matches DBC Intel/little-endian signals (@1+), which your YAML came from.
         payload_bytes = self.datagram["DATA"]
 
-        # If DATA might be a list of ints instead of bytes, convert it
         if isinstance(payload_bytes, list):
             payload_bytes = bytes(payload_bytes)
 
@@ -174,20 +171,6 @@ class Decoder:
                 self.state = State.SOF
         
         return self.state == State.VALID
-    
-    def resolve_id_to_config_path(self, id):
-        directory = Path(__file__).parent / "../boards"
-
-        for filename in os.listdir(directory):
-            path = os.path.join(directory, filename)
-            with open(path, 'r') as file:
-                data = yaml.safe_load(file)
-
-            for name, message in data["Messages"].items():
-                if message["id"] == id:
-                    return path, filename
-        return "no path resolved", ""
-    
     
     def _append_signal_json(self, output_dir, message_name, signal_name, value, datagram_id):
         """

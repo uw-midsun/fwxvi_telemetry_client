@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CAN: Fetch Board Files",
+      "type": "shell",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "scripts/tools/file_fetcher.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "CAN: Generate Global YAML",
+      "type": "shell",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "scripts/tools/global_can_gen.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "CAN: Fetch + Generate",
+      "dependsOn": [
+        "CAN: Fetch Board Files",
+        "CAN: Generate Global YAML"
+      ],
+      "dependsOrder": "sequence",
+      "type": "shell",
+      "command": "echo",
+      "args": [
+        "Finished fetching and generating CAN YAML."
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
