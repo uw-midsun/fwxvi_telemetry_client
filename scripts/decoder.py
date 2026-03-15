@@ -178,8 +178,44 @@ class Decoder:
                 self.state = State.SOF
 
         return self.state == State.VALID
+<<<<<<< HEAD
 
     def close(self):
         if hasattr(self, "signal_store") and self.signal_store is not None:
             self.signal_store.close()
             self.signal_store = None
+=======
+    
+    def _append_signal_json(self, output_dir, message_name, signal_name, value, datagram_id):
+        """
+        Appends one decoded signal sample to its own JSON file.
+        Each file contains a JSON array of timestamped samples.
+        """
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Use message + signal to avoid collisions like x_axis appearing in multiple messages
+        filename = f"{message_name}__{signal_name}.json"
+        filepath = os.path.join(output_dir, filename)
+
+        record = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "id": datagram_id,
+            "value": value,
+        }
+
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r") as f:
+                    existing = json.load(f)
+                if not isinstance(existing, list):
+                    existing = [existing]
+            except (json.JSONDecodeError, FileNotFoundError):
+                existing = []
+        else:
+            existing = []
+
+        existing.append(record)
+
+        with open(filepath, "w") as f:
+            json.dump(existing, f, indent=2)
+>>>>>>> 0d52a01 (tasks and global can gen script)
