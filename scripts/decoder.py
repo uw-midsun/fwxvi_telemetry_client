@@ -1,16 +1,16 @@
 from serial import Serial
-from scripts.sim.sim_serial import SimSerial
 import yaml
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import scripts.db_write as dbw
 from scripts.sqlite_signal_store import SignalSampleStore
 
-DATAGRAM_SOF = b'\xaa'
-DATAGRAM_EOF = b'\xbb'
+DATAGRAM_SOF = b"\xaa"
+DATAGRAM_EOF = b"\xbb"
 PRIORITY_BIT = 0x400
 
 id_list = []
+
 
 class State:
     SOF = "SOF"
@@ -20,6 +20,7 @@ class State:
     EOF = "EOF"
     VALID = "VALID"
 
+
 @dataclass
 class Datagram:
     pass
@@ -28,13 +29,14 @@ class Datagram:
     config_path: str = ""
     data: dict[str, dict[str, int]] = field(default_factory=dict)
 
+
 class Decoder:
     def __init__(self, port, baudrate, timeout=1, ser=None):
         if ser is None:
             self.ser = Serial(port=port, baudrate=baudrate, timeout=timeout)
         else:
             self.ser = ser
-        
+
         self.state = State.SOF
         self.datagram = None
         self.buffer = []
@@ -44,7 +46,7 @@ class Decoder:
 
     def enable_write_to_db(self):
         self.isWriteToDb = True
-        
+
     def disable_write_to_db(self):
         self.isWriteToDb = False
 
@@ -61,7 +63,7 @@ class Decoder:
         if self.parse_byte(byte):
             self.decode_datagram()
         return True
-    
+
     def decode_datagram(self):
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
@@ -72,7 +74,9 @@ class Decoder:
             data_yaml = yaml.safe_load(file)
 
         if "messages" not in data_yaml:
-            raise KeyError(f"'messages' key not found in YAML: {decoded_data.config_path}")
+            raise KeyError(
+                f"'messages' key not found in YAML: {decoded_data.config_path}"
+            )
 
         # Find the matching message by CAN ID
         matched_message = None
@@ -93,7 +97,6 @@ class Decoder:
         self.signal_store.increment_stat("matched_messages")
 
         message_name = matched_message["name"]
-        
 
         payload_bytes = self.datagram["DATA"]
 
@@ -150,7 +153,7 @@ class Decoder:
                 # print(message_id)
                 if not id_list.__contains__(message_id):
                     id_list.append(message_id)
-                
+
                 # print(id_list)
                 self.datagram = {"id": message_id}
                 # print(f"ID: {self.datagram["id"]} | DEVICE: {self.datagram["device"]}")
@@ -174,9 +177,9 @@ class Decoder:
                 self.state = State.VALID
             else:
                 self.state = State.SOF
-        
+
         return self.state == State.VALID
-    
+
     def close(self):
         if hasattr(self, "signal_store") and self.signal_store is not None:
             self.signal_store.close()

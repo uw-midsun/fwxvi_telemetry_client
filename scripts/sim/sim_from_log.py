@@ -43,7 +43,9 @@ class SimFromLog:
 
                 try:
                     payload = bytes.fromhex(payload_hex)
-                    timestamp = datetime.strptime(timestamp_text.strip(), "%m-%d-%Y %H:%M:%S.%f")
+                    timestamp = datetime.strptime(
+                        timestamp_text.strip(), "%m-%d-%Y %H:%M:%S.%f"
+                    )
                 except ValueError:
                     continue
 
