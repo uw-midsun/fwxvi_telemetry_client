@@ -45,7 +45,6 @@ def build_decoder(args):
     sim_ser.open()
     return Decoder(port="SIM", baudrate=115200, ser=sim_ser)
 
-
 if __name__ == "__main__":
     args = parse_args()
     decoder = build_decoder(args)
