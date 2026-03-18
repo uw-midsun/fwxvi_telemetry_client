@@ -2,22 +2,12 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
-DEFAULT_ID_OFFSET = 4
-DEFAULT_PRIORITY_BIT = 0x400
-DEFAULT_DEVICE_MAP = {
-	"telemetry": 0,
-	"front_controller": 1,
-	"rear_controller": 2,
-	"imu": 3,
-	"can_communication": 4,
-	"steering": 5,
-}
 
 BOARD_ORDER = [
 	"telemetry",
@@ -31,27 +21,24 @@ NAME_OVERRIDES = {
 }
 
 
-def parse_system_can(system_can_path: Path) -> tuple[int, int, dict[str, int]]:
-	"""Parse bit constants and device enum values from fetched system_can.py."""
-	text = system_can_path.read_text(encoding="utf-8")
+DBC_NAME_OVERRIDES = {
+	("front_controller", "pedal"): "front_controller_pedal_data",
+	("steering", "steering"): "steering_buttons",
+}
 
-	id_offset_match = re.search(r"SYSTEM_CAN_MESSAGE_ID_OFFSET\s*=\s*(\d+)", text)
-	priority_bit_match = re.search(r"SYSTEM_CAN_MESSAGE_PRIORITY_BIT\s*=\s*(0x[0-9A-Fa-f]+|\d+)", text)
 
-	id_offset = int(id_offset_match.group(1)) if id_offset_match else DEFAULT_ID_OFFSET
-	priority_bit = int(priority_bit_match.group(1), 0) if priority_bit_match else DEFAULT_PRIORITY_BIT
+def parse_dbc_message_ids(dbc_path: Path) -> dict[str, int]:
+	"""Parse BO_ entries from DBC and return message-name -> CAN-ID."""
+	text = dbc_path.read_text(encoding="utf-8")
+	message_ids: dict[str, int] = {}
 
-	device_map: dict[str, int] = {}
-	for name, value in re.findall(r"SYSTEM_CAN_DEVICE_([A-Z_]+)\s*=\s*(\d+)", text):
-		board = name.lower()
-		if board == "num_system_can_devices":
-			continue
-		device_map[board] = int(value)
+	for raw_id, raw_name in re.findall(r"(?m)^BO_\s+(\d+)\s+([A-Za-z0-9_]+)\s*:", text):
+		message_ids[raw_name] = int(raw_id)
 
-	if not device_map:
-		device_map = dict(DEFAULT_DEVICE_MAP)
+	if not message_ids:
+		raise ValueError(f"No BO_ message definitions found in DBC: {dbc_path}")
 
-	return id_offset, priority_bit, device_map
+	return message_ids
 
 
 def iter_board_files(cache_dir: Path) -> list[Path]:
@@ -124,9 +111,28 @@ def output_message_name(board: str, raw_name: str) -> str:
 	return NAME_OVERRIDES.get((board, raw_name), raw_name)
 
 
-def generate_global_messages(cache_dir: Path) -> list[dict[str, Any]]:
-	system_can_path = cache_dir / "system_can.py"
-	id_offset, priority_bit, device_map = parse_system_can(system_can_path)
+def resolve_dbc_name(board: str, raw_name: str, output_name: str) -> list[str]:
+	"""Return candidate DBC message names in priority order."""
+	candidates = [
+		DBC_NAME_OVERRIDES.get((board, raw_name)),
+		output_name,
+		raw_name,
+		f"{board}_{raw_name}",
+		f"{board}_{raw_name}_data",
+	]
+
+	seen = set()
+	resolved: list[str] = []
+	for candidate in candidates:
+		if candidate and candidate not in seen:
+			seen.add(candidate)
+			resolved.append(candidate)
+
+	return resolved
+
+
+def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, Any]]:
+	dbc_message_ids = parse_dbc_message_ids(dbc_path)
 
 	messages: list[dict[str, Any]] = []
 	for board_file in iter_board_files(cache_dir):
@@ -134,31 +140,37 @@ def generate_global_messages(cache_dir: Path) -> list[dict[str, Any]]:
 		if board == "system_can":
 			continue
 
-		if board not in device_map:
-			raise ValueError(
-				f"Board '{board}' from {board_file.name} not found in SystemCanDevice enum"
-			)
-
 		board_data = yaml.safe_load(board_file.read_text(encoding="utf-8")) or {}
 		board_messages = board_data.get("Messages", {})
 
 		for raw_message_name, message_cfg in board_messages.items():
-			local_id = int(message_cfg["id"])
-			critical = bool(message_cfg.get("critical", False))
-			signals, total_bits = flattened_signals(message_cfg.get("signals", {}))
+			output_name = output_message_name(board, str(raw_message_name))
+			dbc_candidates = resolve_dbc_name(board, str(raw_message_name), output_name)
+			dbc_name = next((name for name in dbc_candidates if name in dbc_message_ids), None)
 
-			message_id = (local_id << id_offset) + int(device_map[board])
-			if not critical:
-				message_id += priority_bit
+			if dbc_name is None:
+				print(
+					"Warning: Skipping message without DBC ID: "
+					f"'{board}.{raw_message_name}' (output name '{output_name}'). "
+					f"Tried: {dbc_candidates}",
+					file=sys.stderr,
+				)
+				continue
+
+			signals, total_bits = flattened_signals(message_cfg.get("signals", {}))
+			message_id = dbc_message_ids[dbc_name]
 
 			messages.append(
 				{
 					"id": message_id,
-					"name": output_message_name(board, str(raw_message_name)),
+					"name": output_name,
 					"dlc": (total_bits + 7) // 8,
 					"signals": signals,
 				}
 			)
+
+	if not messages:
+		raise ValueError("No messages were generated. Ensure the DBC contains BO_ entries for your board YAML messages.")
 
 	return messages
 
@@ -171,7 +183,13 @@ def main() -> None:
 		"--cache-dir",
 		type=Path,
 		default=Path("can") / "fetched_cache",
-		help="Directory containing fetched board YAML files and system_can.py",
+		help="Directory containing fetched board YAML files",
+	)
+	parser.add_argument(
+		"--dbc-path",
+		type=Path,
+		default=Path("can") / "fetched_cache" / "system_dbc.dbc",
+		help="Path to DBC file that defines canonical CAN IDs",
 	)
 	parser.add_argument(
 		"--output",
@@ -183,12 +201,15 @@ def main() -> None:
 
 	repo_root = Path(__file__).resolve().parents[2]
 	cache_dir = args.cache_dir if args.cache_dir.is_absolute() else repo_root / args.cache_dir
+	dbc_path = args.dbc_path if args.dbc_path.is_absolute() else repo_root / args.dbc_path
 	output_path = args.output if args.output.is_absolute() else repo_root / args.output
 
 	if not cache_dir.exists():
 		raise FileNotFoundError(f"Cache directory not found: {cache_dir}")
+	if not dbc_path.exists():
+		raise FileNotFoundError(f"DBC file not found: {dbc_path}")
 
-	messages = generate_global_messages(cache_dir)
+	messages = generate_global_messages(cache_dir, dbc_path)
 	payload = {"messages": messages}
 
 	output_path.parent.mkdir(parents=True, exist_ok=True)

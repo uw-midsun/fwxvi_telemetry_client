@@ -1,16 +1,25 @@
 messages:
-- id: 1856
-  name: telemetry
+- id: 1861
+  name: imu_data
   dlc: 8
   signals:
-  - name: telemetry_data
+  - name: g_force
     start_bit: 0
-    length: 64
+    length: 16
+  - name: roll
+    start_bit: 16
+    length: 16
+  - name: pitch
+    start_bit: 32
+    length: 16
+  - name: yaw
+    start_bit: 48
+    length: 16
 - id: 1361
-  name: front_controller_pedal
+  name: drive_status
   dlc: 5
   signals:
-  - name: percentage
+  - name: pedal_percentage
     start_bit: 0
     length: 32
   - name: drive_state
@@ -84,7 +93,7 @@ messages:
   - name: left_sig_current
     start_bit: 48
     length: 16
-- id: 18
+- id: 19
   name: rear_controller_status
   dlc: 2
   signals:
@@ -103,7 +112,7 @@ messages:
   - name: motor_precharge_complete
     start_bit: 14
     length: 1
-- id: 34
+- id: 35
   name: battery_stats_A
   dlc: 6
   signals:
@@ -116,7 +125,7 @@ messages:
   - name: pack_soc
     start_bit: 32
     length: 16
-- id: 50
+- id: 51
   name: battery_stats_B
   dlc: 6
   signals:
@@ -129,7 +138,7 @@ messages:
   - name: max_temperature
     start_bit: 32
     length: 16
-- id: 66
+- id: 67
   name: power_input_stats
   dlc: 8
   signals:
@@ -145,7 +154,7 @@ messages:
   - name: input_aux_current
     start_bit: 48
     length: 16
-- id: 1970
+- id: 1971
   name: AFE1_status_A
   dlc: 7
   signals:
@@ -161,7 +170,7 @@ messages:
   - name: voltage_2
     start_bit: 40
     length: 16
-- id: 1986
+- id: 1987
   name: AFE1_status_B
   dlc: 7
   signals:
@@ -177,7 +186,7 @@ messages:
   - name: voltage_2
     start_bit: 40
     length: 16
-- id: 2002
+- id: 2003
   name: AFE2_status_A
   dlc: 7
   signals:
@@ -193,7 +202,7 @@ messages:
   - name: voltage_2
     start_bit: 40
     length: 16
-- id: 2018
+- id: 2019
   name: AFE2_status_B
   dlc: 7
   signals:
@@ -209,7 +218,7 @@ messages:
   - name: voltage_2
     start_bit: 40
     length: 16
-- id: 2034
+- id: 2035
   name: AFE_temperature
   dlc: 8
   signals:
@@ -237,7 +246,7 @@ messages:
   - name: temperature_6
     start_bit: 56
     length: 8
-- id: 101
+- id: 100
   name: steering
   dlc: 5
   signals:

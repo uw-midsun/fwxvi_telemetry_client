@@ -1,12 +1,10 @@
 from serial import Serial
 from scripts.sim.sim_serial import SimSerial
-from pathlib import Path
-import os
 import yaml
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, field
 import scripts.db_write as dbw
+from scripts.sqlite_signal_store import SignalSampleStore
 
 DATAGRAM_SOF = b'\xaa'
 DATAGRAM_EOF = b'\xbb'
@@ -42,6 +40,7 @@ class Decoder:
         self.buffer = []
         self.decoded_data = {}
         self.isWriteToDb = False
+        self.signal_store = SignalSampleStore()
 
     def enable_write_to_db(self):
         self.isWriteToDb = True
@@ -67,8 +66,9 @@ class Decoder:
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
         decoded_data.length = self.datagram["DLC"]
+        self.signal_store.increment_stat("parsed_messages")
 
-        with open("./boards/global_can.yaml", "r") as file:
+        with open("./can/global_can.yaml", "r") as file:
             data_yaml = yaml.safe_load(file)
 
         if "messages" not in data_yaml:
@@ -85,8 +85,12 @@ class Decoder:
                 break
 
         if matched_message is None:
+            print("UNMATCHEDMESSAGE")
+            self.signal_store.increment_stat("unmatched_messages")
             return
             # raise ValueError(f"Message ID {decoded_data.idx} not found in YAML: {decoded_data.config_path}")
+
+        self.signal_store.increment_stat("matched_messages")
 
         message_name = matched_message["name"]
         
@@ -101,6 +105,7 @@ class Decoder:
         decoded_data.data = {}
 
         print("matched message")
+        sample_timestamp = datetime.now(timezone.utc).isoformat()
 
         for signal in matched_message["signals"]:
             signal_name = signal["name"]
@@ -116,13 +121,13 @@ class Decoder:
                 "value": raw_value,
             }
 
-            # Write each decoded signal to its own JSON file
-            self._append_signal_json(
-                output_dir=os.path.join("decoded_json", parent_name),
+            self.signal_store.insert_signal(
+                timestamp=sample_timestamp,
+                can_id=decoded_data.idx,
+                parent_name=parent_name,
                 message_name=message_name,
                 signal_name=signal_name,
                 value=raw_value,
-                datagram_id=decoded_data.idx,
             )
 
         self.decoded_data[message_name] = decoded_data.data
@@ -172,35 +177,7 @@ class Decoder:
         
         return self.state == State.VALID
     
-    def _append_signal_json(self, output_dir, message_name, signal_name, value, datagram_id):
-        """
-        Appends one decoded signal sample to its own JSON file.
-        Each file contains a JSON array of timestamped samples.
-        """
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Use message + signal to avoid collisions like x_axis appearing in multiple messages
-        filename = f"{message_name}__{signal_name}.json"
-        filepath = os.path.join(output_dir, filename)
-
-        record = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "id": datagram_id,
-            "value": value,
-        }
-
-        if os.path.exists(filepath):
-            try:
-                with open(filepath, "r") as f:
-                    existing = json.load(f)
-                if not isinstance(existing, list):
-                    existing = [existing]
-            except (json.JSONDecodeError, FileNotFoundError):
-                existing = []
-        else:
-            existing = []
-
-        existing.append(record)
-
-        with open(filepath, "w") as f:
-            json.dump(existing, f, indent=2)
+    def close(self):
+        if hasattr(self, "signal_store") and self.signal_store is not None:
+            self.signal_store.close()
+            self.signal_store = None

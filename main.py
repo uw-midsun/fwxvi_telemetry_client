@@ -1,38 +1,68 @@
-from scripts.sim.sim_serial import SimSerial
-from scripts.sim.can_sim import CanMessageSimulator
+import argparse
+from pathlib import Path
+
 from scripts.decoder import Decoder
-import time
 import scripts.db_write as dbw
-import json
+from scripts.sim.sim_from_log import SimFromLog
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Telemetry decoder entry point")
+    parser.add_argument(
+        "-m",
+        "--mode",
+        choices=["serial", "sim"],
+        default="serial",
+        help="Input source mode. Defaults to serial.",
+    )
+    parser.add_argument(
+        "--log-file",
+        help=".log file name from the logs folder (required for sim mode)",
+    )
+    parser.add_argument(
+        "-d",
+        "--dbw",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable or disable writing decoded values to the database.",
+    )
+    return parser.parse_args()
+
+
+def build_decoder(args):
+    if args.mode == "serial":
+        return Decoder(port="COM9", baudrate=115200, ser=None)
+
+    if not args.log_file:
+        raise ValueError("--log-file is required when --mode sim is used")
+
+    log_path = Path("logs") / args.log_file
+    if not log_path.is_file() or log_path.suffix.lower() != ".log":
+        raise ValueError(f"Log file not found or invalid: {log_path}")
+
+    sim_ser = SimFromLog(log_path=log_path, baudrate=115200)
+    sim_ser.open()
+    return Decoder(port="SIM", baudrate=115200, ser=sim_ser)
 
 if __name__ == "__main__":
-    # sim = SimSerial()
-    # canSim = CanMessageSimulator()
+    args = parse_args()
+    decoder = build_decoder(args)
 
-    # boards = ["front_controller", "imu", "rear_controller", "steering", "telemetry"]
-
-    # sim.open()
-
-    # canSim.read_config(boards)
-    decoder = Decoder(port="COM9", baudrate=115200, ser=None)
-    # decoder.enable_write_to_db()
+    if args.dbw:
+        decoder.enable_write_to_db()
+    else:
+        decoder.disable_write_to_db()
 
     try:
         while 1:
-            decoder.read()
+            has_data = decoder.read()
+            if args.mode == "sim" and not has_data:
+                break
     except KeyboardInterrupt:
         print(decoder.decoded_data)
+    finally:
+        decoder.close()
+        if args.mode == "sim" and hasattr(decoder.ser, "close"):
+            decoder.ser.close()
         dbw.write.flush()
         dbw.client.close()
-    
-    # with open("decoded_data.json", "w") as file:
-    #     json.dump(decoder.decoded_data, file, indent=1)
-
-    #     dbw.write_dict(decoder.decoded_data)
-
-    # try:
-    #     for i in range(50):
-    #         dbw.write_point("test1", "Imu tilt", i)
-    #         print(i)
-    #         time.sleep(0.05)
-    # finally:
