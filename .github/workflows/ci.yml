@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  format-and-lint:
+    name: Format & Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff format
+        run: ruff format .
+
+      - name: Run ruff lint with auto-fix
+        run: ruff check --fix .
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --quiet || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.git-check.outputs.changed == 'true'
+        run: |
+          git add .
+          git commit -m "[auto-format] Ruff format and lint via GitHub Actions"
+          git config pull.rebase true
+          git pull origin ${{ github.head_ref || github.ref_name }}
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+
+  test:
+    name: Test
+    needs: format-and-lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull latest changes (after auto-format)
+        run: |
+          git fetch origin ${{ github.head_ref || github.ref_name }}
+          git reset --hard FETCH_HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: pytest test/ -v

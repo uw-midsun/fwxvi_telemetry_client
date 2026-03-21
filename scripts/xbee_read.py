@@ -14,4 +14,3 @@ try:
 finally:
     if device.is_open():
         device.close()
-    

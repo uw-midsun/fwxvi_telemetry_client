@@ -13,3 +13,7 @@ prerequisites:
 for scripts to work:
 
 `pip install influxdb-client`
+
+to enable file-fetching scripts:
+
+`pip install requests`
