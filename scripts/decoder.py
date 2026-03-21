@@ -31,7 +31,15 @@ class Datagram:
 
 
 class Decoder:
-    def __init__(self, port, baudrate, timeout=1, ser=None):
+    def __init__(
+        self,
+        port,
+        baudrate,
+        timeout=1,
+        ser=None,
+        debug_mode=False,
+        filter_id=None,
+    ):
         if ser is None:
             self.ser = Serial(port=port, baudrate=baudrate, timeout=timeout)
         else:
@@ -43,6 +51,8 @@ class Decoder:
         self.decoded_data = {}
         self.isWriteToDb = False
         self.signal_store = SignalSampleStore()
+        self.debug_mode = debug_mode
+        self.filter_id = filter_id
 
     def enable_write_to_db(self):
         self.isWriteToDb = True
@@ -65,6 +75,9 @@ class Decoder:
         return True
 
     def decode_datagram(self):
+        if self.filter_id is not None and self.datagram["id"] != self.filter_id:
+            return None
+
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
         decoded_data.length = self.datagram["DLC"]
@@ -81,18 +94,14 @@ class Decoder:
         # Find the matching message by CAN ID
         matched_message = None
         for message in data_yaml["messages"]:
-            print(message["id"], decoded_data.idx)
             if message["id"] == decoded_data.idx:
                 matched_message = message
                 parent_name = message["name"]
-                print(parent_name)
                 break
 
         if matched_message is None:
-            print("UNMATCHEDMESSAGE")
             self.signal_store.increment_stat("unmatched_messages")
             return
-            # raise ValueError(f"Message ID {decoded_data.idx} not found in YAML: {decoded_data.config_path}")
 
         self.signal_store.increment_stat("matched_messages")
 
@@ -107,7 +116,6 @@ class Decoder:
 
         decoded_data.data = {}
 
-        print("matched message")
         sample_timestamp = datetime.now(timezone.utc).isoformat()
 
         for signal in matched_message["signals"]:
@@ -141,7 +149,8 @@ class Decoder:
         return decoded_data
 
     def parse_byte(self, byte):
-        print(f"{byte:#04X} State: {self.state}")
+        if self.debug_mode:
+            print(f"{byte:#04X} State: {self.state}")
         if self.state == State.SOF or self.state == State.VALID:
             self.reset_buffer()
             if byte == 0xAA:
@@ -150,12 +159,9 @@ class Decoder:
             self.buffer.append(byte)
             if len(self.buffer) == 2:
                 message_id = int.from_bytes(self.buffer, byteorder="big")
-                # print(message_id)
                 if not id_list.__contains__(message_id):
                     id_list.append(message_id)
-                # print(id_list)
                 self.datagram = {"id": message_id}
-                # print(f"ID: {self.datagram["id"]} | DEVICE: {self.datagram["device"]}")
                 self.buffer = []
                 self.state = State.DLC
         elif self.state == State.DLC:
@@ -166,12 +172,19 @@ class Decoder:
             else:
                 self.state = State.SOF
         elif self.state == State.DATA:
+            if byte == 0xAA or byte == 0xBB:
+                if self.debug_mode:
+                    print(f"MALFORMED_MESSAGE, id: {self.datagram["id"]}")
+                self.signal_store.increment_stat("malformed message")
             self.buffer.append(byte)
             if len(self.buffer) == self.datagram["DLC"]:
                 self.datagram["DATA"] = bytes(self.buffer)
-                # print(self.datagram["DATA"])
                 self.state = State.EOF
         elif self.state == State.EOF:
+            if byte != 0xBB:
+                if self.debug_mode:
+                    print(f"MALFORMED_MESSAGE, id: {self.datagram["id"]}")
+                self.signal_store.increment_stat("malformed message")
             if byte == 0xBB:
                 self.state = State.VALID
             else:

@@ -3,7 +3,7 @@ from queue import Queue, Empty
 
 
 class SimSerial:
-    def __init__(self, baudrate=115200):
+    def __init__(self, baudrate=230400):
         self.rx = Queue()
         self.is_open = False
         self.baudrate = baudrate

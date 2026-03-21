@@ -38,6 +38,30 @@
         "Finished fetching and generating CAN YAML."
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "Run: Capture Signal Program",
+      "type": "shell",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "programs/capture_signal.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run: CAN Signal Viewer",
+      "type": "shell",
+      "command": "${command:python.interpreterPath}",
+      "args": [
+        "programs/can_signal_viewer.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }

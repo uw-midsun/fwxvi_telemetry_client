@@ -18,7 +18,7 @@ class CanSignalViewer:
         self.status_var = tk.StringVar()
         self.status_var.set(f"Watching DB: {self.db_path}")
         self.stats_var = tk.StringVar()
-        self.stats_var.set("Parsed: 0 | Matched: 0 | Unmatched: 0")
+        self.stats_var.set("Parsed: 0 | Matched: 0 | Unmatched: 0 | Malformed: 0")
 
         top = ttk.Frame(root, padding=10)
         top.pack(fill="both", expand=True)
@@ -152,8 +152,9 @@ class CanSignalViewer:
         parsed = stats.get("parsed_messages", 0)
         matched = stats.get("matched_messages", 0)
         unmatched = stats.get("unmatched_messages", 0)
+        malformed = stats.get("malformed message", 0)
         self.stats_var.set(
-            f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched}"
+            f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched} | Malformed: {malformed}"
         )
 
         self.status_var.set(
