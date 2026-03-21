@@ -26,7 +26,9 @@ class CanSignalViewer:
         header = ttk.Frame(top)
         header.pack(fill="x", pady=(0, 8))
 
-        ttk.Label(header, text="CAN Signal Viewer", font=("Segoe UI", 16, "bold")).pack(side="left")
+        ttk.Label(header, text="CAN Signal Viewer", font=("Segoe UI", 16, "bold")).pack(
+            side="left"
+        )
         ttk.Label(header, textvariable=self.status_var).pack(side="right")
 
         stats_row = ttk.Frame(top)
@@ -76,7 +78,9 @@ class CanSignalViewer:
             self.conn = None
             return False
 
-    def upsert_row(self, message: str, signal: str, value: int, timestamp: str, can_id: int) -> None:
+    def upsert_row(
+        self, message: str, signal: str, value: int, timestamp: str, can_id: int
+    ) -> None:
         key = f"{message}::{signal}"
 
         values = (
@@ -148,7 +152,9 @@ class CanSignalViewer:
         parsed = stats.get("parsed_messages", 0)
         matched = stats.get("matched_messages", 0)
         unmatched = stats.get("unmatched_messages", 0)
-        self.stats_var.set(f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched}")
+        self.stats_var.set(
+            f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched}"
+        )
 
         self.status_var.set(
             f"Watching DB: {self.db_path} | {len(self.row_ids)} signals | last sample id {self.last_seen_sample_id}"

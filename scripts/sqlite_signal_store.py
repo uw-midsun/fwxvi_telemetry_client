@@ -42,7 +42,9 @@ class SignalSampleStore:
             )
         self.conn.commit()
 
-    def insert_signal(self, timestamp, can_id, parent_name, message_name, signal_name, value):
+    def insert_signal(
+        self, timestamp, can_id, parent_name, message_name, signal_name, value
+    ):
         self.conn.execute(
             """
             INSERT INTO signal_samples (
