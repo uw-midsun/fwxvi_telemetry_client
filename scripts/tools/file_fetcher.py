@@ -8,7 +8,9 @@ OWNER = "uw-midsun"
 REPO = "fwxvi"
 DIRECTORY_PATH = "can/boards/"
 
+
 boards = ["front_controller", "rear_controller", "steering", "telemetry"]
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -39,10 +41,18 @@ def fetch_file(source_path: str, destination_path: Path, branch: str | None = No
 if __name__ == "__main__":
     args = parse_args()
 
-content = base64.b64decode(data["content"])
-with open("./can/fetched_cache/system_can.py", "wb") as f:
-    f.write(content)
-url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/can/tools/system_dbc.dbc"
+    for board in boards:
+        fetch_file(
+            source_path=f"{DIRECTORY_PATH}{board}.yaml",
+            destination_path=Path(f"./can/fetched_cache/{board}.yaml"),
+            branch=args.branch,
+        )
+
+    fetch_file(
+        source_path="can/tools/system_can.py",
+        destination_path=Path("./can/fetched_cache/system_can.py"),
+        branch=args.branch,
+    )
 
     fetch_file(
         source_path="can/tools/system_dbc.dbc",
