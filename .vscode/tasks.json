@@ -6,7 +6,9 @@
       "type": "shell",
       "command": "${command:python.interpreterPath}",
       "args": [
-        "scripts/tools/file_fetcher.py"
+        "scripts/tools/file_fetcher.py",
+        "--branch",
+        "${input:fetchBranch}"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -62,6 +64,14 @@
         "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "fetchBranch",
+      "type": "promptString",
+      "description": "Branch name to fetch from (leave empty for repo default branch)",
+      "default": ""
     }
   ]
 }

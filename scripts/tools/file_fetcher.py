@@ -1,36 +1,51 @@
-import requests
+import argparse
 import base64
+from pathlib import Path
+
+import requests
 
 OWNER = "uw-midsun"
 REPO = "fwxvi"
 DIRECTORY_PATH = "can/boards/"
 
-
 boards = ["front_controller", "rear_controller", "steering", "telemetry"]
 
-for board in boards:
-    url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/{DIRECTORY_PATH}{board}.yaml"
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Fetch CAN board files and tools from GitHub"
+    )
+    parser.add_argument(
+        "-b",
+        "--branch",
+        help="Optional branch name to fetch files from (uses repo default branch if omitted)",
+    )
+    return parser.parse_args()
 
-    r = requests.get(url)
-    data = r.json()
+
+def fetch_file(source_path: str, destination_path: Path, branch: str | None = None):
+    url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/{source_path}"
+    params = {"ref": branch} if branch else None
+
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+    data = response.json()
 
     content = base64.b64decode(data["content"])
-    with open(f"./can/fetched_cache/{board}.yaml", "wb") as f:
-        f.write(content)
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    with destination_path.open("wb") as output_file:
+        output_file.write(content)
 
-url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/can/tools/system_can.py"
 
-r = requests.get(url)
-data = r.json()
+if __name__ == "__main__":
+    args = parse_args()
 
 content = base64.b64decode(data["content"])
 with open("./can/fetched_cache/system_can.py", "wb") as f:
     f.write(content)
 url = f"https://api.github.com/repos/{OWNER}/{REPO}/contents/can/tools/system_dbc.dbc"
 
-r = requests.get(url)
-data = r.json()
-
-content = base64.b64decode(data["content"])
-with open("./can/fetched_cache/system_dbc.dbc", "wb") as f:
-    f.write(content)
+    fetch_file(
+        source_path="can/tools/system_dbc.dbc",
+        destination_path=Path("./can/fetched_cache/system_dbc.dbc"),
+        branch=args.branch,
+    )
