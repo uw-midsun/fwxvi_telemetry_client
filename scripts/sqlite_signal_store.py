@@ -33,6 +33,7 @@ class SignalSampleStore:
         )
         now = datetime.now(timezone.utc).isoformat()
         for stat_key in (
+            "parse_byte_calls",
             "parsed_messages",
             "matched_messages",
             "unmatched_messages",

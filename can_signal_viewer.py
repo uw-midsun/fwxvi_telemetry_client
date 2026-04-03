@@ -2,10 +2,12 @@ import sqlite3
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
+import time
 from typing import Dict, Tuple
 
 ROOT_DB = Path(__file__).resolve().parent / "data/decoded_data.sqlite"
 REFRESH_MS = 250
+SMOOTHING_ALPHA = 0.2
 
 
 class CanSignalViewer:
@@ -18,7 +20,9 @@ class CanSignalViewer:
         self.status_var = tk.StringVar()
         self.status_var.set(f"Watching DB: {self.db_path}")
         self.stats_var = tk.StringVar()
-        self.stats_var.set("Parsed: 0 | Matched: 0 | Unmatched: 0 | Malformed: 0")
+        self.stats_var.set(
+            "Parsed: 0 | Matched: 0 | Unmatched: 0 | Malformed: 0 | Bytes/s: 0.0"
+        )
 
         top = ttk.Frame(root, padding=10)
         top.pack(fill="both", expand=True)
@@ -61,6 +65,9 @@ class CanSignalViewer:
         self.row_ids: Dict[str, str] = {}
         self.signal_read_counts: Dict[str, int] = {}
         self.last_seen_sample_id = 0
+        self.last_parse_byte_calls = 0
+        self.last_rate_update = time.monotonic()
+        self.smoothed_bytes_per_second: float | None = None
         self.conn: sqlite3.Connection | None = None
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -159,8 +166,30 @@ class CanSignalViewer:
         matched = stats.get("matched_messages", 0)
         unmatched = stats.get("unmatched_messages", 0)
         malformed = stats.get("malformed message", 0)
+        parse_byte_calls = stats.get("parse_byte_calls", 0)
+
+        now = time.monotonic()
+        elapsed = now - self.last_rate_update
+        if elapsed > 0:
+            raw_bytes_per_second = (
+                parse_byte_calls - self.last_parse_byte_calls
+            ) / elapsed
+        else:
+            raw_bytes_per_second = 0.0
+
+        if self.smoothed_bytes_per_second is None:
+            self.smoothed_bytes_per_second = raw_bytes_per_second
+        else:
+            self.smoothed_bytes_per_second = (
+                SMOOTHING_ALPHA * raw_bytes_per_second
+                + (1.0 - SMOOTHING_ALPHA) * self.smoothed_bytes_per_second
+            )
+
+        self.last_parse_byte_calls = parse_byte_calls
+        self.last_rate_update = now
+
         self.stats_var.set(
-            f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched} | Malformed: {malformed}"
+            f"Parsed: {parsed} | Matched: {matched} | Unmatched: {unmatched} | Malformed: {malformed} | Bytes/s: {self.smoothed_bytes_per_second:.1f}"
         )
 
         self.status_var.set(

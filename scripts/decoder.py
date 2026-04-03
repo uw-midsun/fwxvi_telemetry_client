@@ -149,6 +149,7 @@ class Decoder:
         return decoded_data
 
     def parse_byte(self, byte):
+        self.signal_store.increment_stat("parse_byte_calls")
         if self.debug_mode:
             print(f"{byte:#04X} State: {self.state}")
         if self.state == State.SOF or self.state == State.VALID:
