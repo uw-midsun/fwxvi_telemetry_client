@@ -35,19 +35,21 @@ class CanSignalViewer:
         stats_row.pack(fill="x", pady=(0, 8))
         ttk.Label(stats_row, textvariable=self.stats_var).pack(side="left")
 
-        columns = ("message", "signal", "value", "timestamp", "id")
+        columns = ("message", "signal", "value", "count", "timestamp", "id")
         self.tree = ttk.Treeview(top, columns=columns, show="headings")
 
         self.tree.heading("message", text="Message")
         self.tree.heading("signal", text="Signal")
         self.tree.heading("value", text="Value")
+        self.tree.heading("count", text="Reads")
         self.tree.heading("timestamp", text="Timestamp")
         self.tree.heading("id", text="CAN ID")
 
         self.tree.column("message", width=240)
         self.tree.column("signal", width=220)
         self.tree.column("value", width=100, anchor="center")
-        self.tree.column("timestamp", width=240)
+        self.tree.column("count", width=90, anchor="center")
+        self.tree.column("timestamp", width=190)
         self.tree.column("id", width=80, anchor="center")
 
         scrollbar_y = ttk.Scrollbar(top, orient="vertical", command=self.tree.yview)
@@ -57,6 +59,7 @@ class CanSignalViewer:
         scrollbar_y.pack(side="right", fill="y")
 
         self.row_ids: Dict[str, str] = {}
+        self.signal_read_counts: Dict[str, int] = {}
         self.last_seen_sample_id = 0
         self.conn: sqlite3.Connection | None = None
 
@@ -82,11 +85,14 @@ class CanSignalViewer:
         self, message: str, signal: str, value: int, timestamp: str, can_id: int
     ) -> None:
         key = f"{message}::{signal}"
+        count = self.signal_read_counts.get(key, 0) + 1
+        self.signal_read_counts[key] = count
 
         values = (
             message,
             signal,
             value,
+            count,
             timestamp,
             can_id,
         )

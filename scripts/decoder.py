@@ -162,6 +162,8 @@ class Decoder:
                 if not id_list.__contains__(message_id):
                     id_list.append(message_id)
                 self.datagram = {"id": message_id}
+                if self.debug_mode:
+                    print(f"ID: {message_id}")
                 self.buffer = []
                 self.state = State.DLC
         elif self.state == State.DLC:
@@ -181,13 +183,12 @@ class Decoder:
                 self.datagram["DATA"] = bytes(self.buffer)
                 self.state = State.EOF
         elif self.state == State.EOF:
-            if byte != 0xBB:
+            if byte == 0xBB or byte == 0:
+                self.state = State.VALID
+            else:
                 if self.debug_mode:
                     print(f"MALFORMED_MESSAGE, id: {self.datagram["id"]}")
                 self.signal_store.increment_stat("malformed message")
-            if byte == 0xBB:
-                self.state = State.VALID
-            else:
                 self.state = State.SOF
 
         return self.state == State.VALID

@@ -19,6 +19,9 @@ def parse_args():
     parser.add_argument(
         "-b",
         "--branch",
+        nargs="?",
+        const=None,
+        default=None,
         help="Optional branch name to fetch files from (uses repo default branch if omitted)",
     )
     return parser.parse_args()
