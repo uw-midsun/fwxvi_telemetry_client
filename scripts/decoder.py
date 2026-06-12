@@ -2,8 +2,8 @@ from serial import Serial
 import yaml
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-import scripts.db_write as dbw
-from scripts.sqlite_signal_store import SignalSampleStore
+from . import db_write as dbw
+from .sqlite_signal_store import SignalSampleStore
 
 DATAGRAM_SOF = b"\xaa"
 DATAGRAM_EOF = b"\xbb"
@@ -31,7 +31,15 @@ class Datagram:
 
 
 class Decoder:
-    def __init__(self, port, baudrate, timeout=1, ser=None):
+    def __init__(
+        self,
+        port,
+        baudrate,
+        timeout=1,
+        ser=None,
+        debug_mode=False,
+        filter_id=None,
+    ):
         if ser is None:
             self.ser = Serial(port=port, baudrate=baudrate, timeout=timeout)
         else:
@@ -43,6 +51,8 @@ class Decoder:
         self.decoded_data = {}
         self.isWriteToDb = False
         self.signal_store = SignalSampleStore()
+        self.debug_mode = debug_mode
+        self.filter_id = filter_id
 
     def enable_write_to_db(self):
         self.isWriteToDb = True
@@ -65,6 +75,9 @@ class Decoder:
         return True
 
     def decode_datagram(self):
+        if self.filter_id is not None and self.datagram["id"] != self.filter_id:
+            return None
+
         decoded_data = Datagram()
         decoded_data.idx = self.datagram["id"]
         decoded_data.length = self.datagram["DLC"]
@@ -81,18 +94,14 @@ class Decoder:
         # Find the matching message by CAN ID
         matched_message = None
         for message in data_yaml["messages"]:
-            print(message["id"], decoded_data.idx)
             if message["id"] == decoded_data.idx:
                 matched_message = message
                 parent_name = message["name"]
-                print(parent_name)
                 break
 
         if matched_message is None:
-            print("UNMATCHEDMESSAGE")
             self.signal_store.increment_stat("unmatched_messages")
             return
-            # raise ValueError(f"Message ID {decoded_data.idx} not found in YAML: {decoded_data.config_path}")
 
         self.signal_store.increment_stat("matched_messages")
 
@@ -107,7 +116,6 @@ class Decoder:
 
         decoded_data.data = {}
 
-        print("matched message")
         sample_timestamp = datetime.now(timezone.utc).isoformat()
 
         for signal in matched_message["signals"]:
@@ -141,7 +149,9 @@ class Decoder:
         return decoded_data
 
     def parse_byte(self, byte):
-        print(f"{byte:#04X} State: {self.state}")
+        self.signal_store.increment_stat("parse_byte_calls")
+        if self.debug_mode:
+            print(f"{byte:#04X} State: {self.state}")
         if self.state == State.SOF or self.state == State.VALID:
             self.reset_buffer()
             if byte == 0xAA:
@@ -150,18 +160,16 @@ class Decoder:
             self.buffer.append(byte)
             if len(self.buffer) == 2:
                 message_id = int.from_bytes(self.buffer, byteorder="big")
-                # print(message_id)
                 if not id_list.__contains__(message_id):
                     id_list.append(message_id)
-
-                # print(id_list)
                 self.datagram = {"id": message_id}
-                # print(f"ID: {self.datagram["id"]} | DEVICE: {self.datagram["device"]}")
+                if self.debug_mode:
+                    print(f"ID: {message_id}")
                 self.buffer = []
                 self.state = State.DLC
         elif self.state == State.DLC:
-            self.datagram["DLC"] = byte
-            if byte <= 9:
+            if 1 <= byte <= 8:
+                self.datagram["DLC"] = byte
                 self.datagram["DATA"] = []
                 self.state = State.DATA
             else:
@@ -170,16 +178,17 @@ class Decoder:
             self.buffer.append(byte)
             if len(self.buffer) == self.datagram["DLC"]:
                 self.datagram["DATA"] = bytes(self.buffer)
-                # print(self.datagram["DATA"])
                 self.state = State.EOF
         elif self.state == State.EOF:
-            if byte == 0xBB:
+            if byte == 0xBB or byte == 0:
                 self.state = State.VALID
             else:
+                if self.debug_mode:
+                    print(f"MALFORMED_MESSAGE, id: {self.datagram["id"]}")
+                self.signal_store.increment_stat("malformed message")
                 self.state = State.SOF
 
         return self.state == State.VALID
-
     def close(self):
         if hasattr(self, "signal_store") and self.signal_store is not None:
             self.signal_store.close()

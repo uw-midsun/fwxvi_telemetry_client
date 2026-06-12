@@ -5,7 +5,7 @@ import time
 
 
 class SimFromLog:
-    def __init__(self, log_path, baudrate=115200):
+    def __init__(self, log_path, baudrate=230400):
         self.log_path = Path(log_path)
         self.baudrate = baudrate
         self.bytes_per_second = max(1.0, float(baudrate / 8))

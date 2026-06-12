@@ -32,7 +32,13 @@ class SignalSampleStore:
             """
         )
         now = datetime.now(timezone.utc).isoformat()
-        for stat_key in ("parsed_messages", "matched_messages", "unmatched_messages"):
+        for stat_key in (
+            "parse_byte_calls",
+            "parsed_messages",
+            "matched_messages",
+            "unmatched_messages",
+            "malformed message",
+        ):
             self.conn.execute(
                 """
                 INSERT OR IGNORE INTO decoder_stats (stat_key, value, updated_at)
