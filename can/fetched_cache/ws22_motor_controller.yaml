@@ -1,0 +1,85 @@
+# WaveSculptor 22 Motor Controller — Synthetic XBee Telemetry Messages
+# Hardware CAN floats are re-encoded to scaled integers before XBee transmission.
+# IDs 2034–2038 are NOT hardware WS22 addresses; they are synthetic identifiers
+# assigned in firmware for XBee-only telemetry frames.
+# Do NOT add "ws22_motor_controller" to the boards list in
+# scripts/tools/file_fetcher.py or this file will be overwritten.
+#
+# All signals are scaled integers (u16 or i16, 16 bits each):
+#   ws22_status    2034  error_flags (u16)           + limit_flags (u16)
+#   ws22_bus       2035  bus_voltage_cV (u16)        + bus_current_cA (i16)
+#   ws22_velocity  2036  motor_velocity_rpm×10 (i16) + vehicle_kph×100 (u16)
+#   ws22_temp      2037  motor_temp_°C×10 (i16)      + heatsink_temp_°C×10 (i16)
+#   ws22_drive_cmd 2038  drive_current×10000 (u16)   + drive_velocity_rpm (i16)
+
+---
+Messages:
+  ws22_status:
+    id: 2034
+    can_id_direct: true
+    cycle: "medium"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      error_flags:
+        length: 16
+      limit_flags:
+        length: 16
+
+  ws22_bus:
+    id: 2035
+    can_id_direct: true
+    cycle: "medium"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      bus_voltage_cv:
+        length: 16
+      bus_current_ca:
+        length: 16
+
+  ws22_velocity:
+    id: 2036
+    can_id_direct: true
+    cycle: "fast"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      motor_velocity_rpm:
+        length: 16
+      vehicle_velocity_kph:
+        length: 16
+
+  ws22_temp:
+    id: 2037
+    can_id_direct: true
+    cycle: "slow"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      motor_temp:
+        length: 16
+      heatsink_temp:
+        length: 16
+
+  ws22_drive_cmd:
+    id: 2038
+    can_id_direct: true
+    cycle: "fast"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      drive_current:
+        length: 16
+      drive_velocity_rpm:
+        length: 16

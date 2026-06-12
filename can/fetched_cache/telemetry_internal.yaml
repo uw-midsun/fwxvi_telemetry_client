@@ -1,0 +1,20 @@
+# Synthetic telemetry-side stats — XBee-only, never on CAN bus.
+# Do NOT add "telemetry_internal" to the boards list in scripts/tools/file_fetcher.py.
+
+---
+Messages:
+  telemetry_stats:
+    id: 2020  # 0x400 | (62 << 4) | 4
+    can_id_direct: true
+    cycle: "1s"
+    critical: false
+    target:
+      telemetry:
+        watchdog: 0
+    signals:
+      can_rx_rate:
+        length: 16
+      xbee_tx_rate:
+        length: 16
+      xbee_bytes_per_sec:
+        length: 16

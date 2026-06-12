@@ -2,8 +2,8 @@ from serial import Serial
 import yaml
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-import scripts.db_write as dbw
-from scripts.sqlite_signal_store import SignalSampleStore
+from . import db_write as dbw
+from .sqlite_signal_store import SignalSampleStore
 
 DATAGRAM_SOF = b"\xaa"
 DATAGRAM_EOF = b"\xbb"
@@ -168,17 +168,13 @@ class Decoder:
                 self.buffer = []
                 self.state = State.DLC
         elif self.state == State.DLC:
-            self.datagram["DLC"] = byte
-            if byte <= 9:
+            if 1 <= byte <= 8:
+                self.datagram["DLC"] = byte
                 self.datagram["DATA"] = []
                 self.state = State.DATA
             else:
                 self.state = State.SOF
         elif self.state == State.DATA:
-            if byte == 0xAA or byte == 0xBB:
-                if self.debug_mode:
-                    print(f"MALFORMED_MESSAGE, id: {self.datagram["id"]}")
-                self.signal_store.increment_stat("malformed message")
             self.buffer.append(byte)
             if len(self.buffer) == self.datagram["DLC"]:
                 self.datagram["DATA"] = bytes(self.buffer)

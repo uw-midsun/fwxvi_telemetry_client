@@ -149,22 +149,36 @@ def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, 
 
         for raw_message_name, message_cfg in board_messages.items():
             output_name = output_message_name(board, str(raw_message_name))
-            dbc_candidates = resolve_dbc_name(board, str(raw_message_name), output_name)
-            dbc_name = next(
-                (name for name in dbc_candidates if name in dbc_message_ids), None
-            )
 
-            if dbc_name is None:
-                print(
-                    "Warning: Skipping message without DBC ID: "
-                    f"'{board}.{raw_message_name}' (output name '{output_name}'). "
-                    f"Tried: {dbc_candidates}",
-                    file=sys.stderr,
+            # Messages with can_id_direct use their yaml id field directly (e.g. external
+            # hardware like the WS22 motor controller with fixed hardware-defined CAN IDs).
+            if message_cfg.get("can_id_direct"):
+                if "id" not in message_cfg:
+                    print(
+                        f"Warning: Skipping message with can_id_direct but no id: "
+                        f"'{board}.{raw_message_name}'",
+                        file=sys.stderr,
+                    )
+                    continue
+                message_id = int(message_cfg["id"])
+            else:
+                dbc_candidates = resolve_dbc_name(board, str(raw_message_name), output_name)
+                dbc_name = next(
+                    (name for name in dbc_candidates if name in dbc_message_ids), None
                 )
-                continue
+
+                if dbc_name is None:
+                    print(
+                        "Warning: Skipping message without DBC ID: "
+                        f"'{board}.{raw_message_name}' (output name '{output_name}'). "
+                        f"Tried: {dbc_candidates}",
+                        file=sys.stderr,
+                    )
+                    continue
+
+                message_id = dbc_message_ids[dbc_name]
 
             signals, total_bits = flattened_signals(message_cfg.get("signals", {}))
-            message_id = dbc_message_ids[dbc_name]
 
             messages.append(
                 {
