@@ -16,5 +16,5 @@ Messages:
         length: 16
       xbee_tx_rate:
         length: 16
-      xbee_bytes_per_sec:
+      xbee_tx_load:
         length: 16

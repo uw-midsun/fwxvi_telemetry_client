@@ -495,7 +495,7 @@ messages:
   - name: xbee_tx_rate
     start_bit: 16
     length: 16
-  - name: xbee_bytes_per_sec
+  - name: xbee_tx_load
     start_bit: 32
     length: 16
 - id: 2034

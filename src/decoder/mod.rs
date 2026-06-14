@@ -132,6 +132,8 @@ pub fn run(
         }
     };
 
+    let debug_bytes = std::env::args().any(|a| a == "--debug-bytes");
+
     let mut parser = Parser::new();
     let mut byte_buf = [0u8; 1];
     let mut batch_bytes: i64 = 0;
@@ -146,8 +148,14 @@ pub fn run(
         match port.read(&mut byte_buf) {
             Ok(1) => {
                 batch_bytes += 1;
+                if debug_bytes {
+                    eprint!("{:02X} ", byte_buf[0]);
+                }
                 if let Some(dgram) = parser.push(byte_buf[0]) {
-                    decode_datagram(&conn, &dgram, &messages);
+                    if debug_bytes {
+                        eprintln!("\n[dgram] id={:#06X} dlc={} data={:02X?}", dgram.id, dgram.dlc, dgram.data);
+                    }
+                    decode_datagram(&conn, &dgram, &messages, debug_bytes);
                 }
             }
             Ok(_) => {}
@@ -167,15 +175,19 @@ pub fn run(
     }
 }
 
-fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage]) {
+fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage], debug: bool) {
     let _ = increment_stat(conn, "parsed_messages", 1);
 
     let Some(msg) = messages.iter().find(|m| m.id == dgram.id as u32) else {
         let _ = increment_stat(conn, "unmatched_messages", 1);
+        eprintln!("[decoder] no match for CAN ID {:#06X}", dgram.id);
         return;
     };
 
     let _ = increment_stat(conn, "matched_messages", 1);
+    if debug {
+        eprintln!("[decoder] matched id={:#06X} name={}", dgram.id, msg.name);
+    }
 
     // Build little-endian u64 from payload bytes
     let mut payload: u64 = 0;

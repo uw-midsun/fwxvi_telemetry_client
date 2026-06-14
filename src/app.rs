@@ -180,7 +180,7 @@ impl eframe::App for TelemetryApp {
                     }
                 }
                 Tab::Dashboard => {
-                    self.dashboard.show(ui);
+                    self.dashboard.show(ui, self.db_conn.as_ref());
                 }
                 Tab::Settings => {
                     let mut cfg            = self.cfg.clone();

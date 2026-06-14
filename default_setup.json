@@ -1,0 +1,73 @@
+{
+  "name": "default",
+  "live": true,
+  "window_seconds": 30,
+  "panels": [
+    {
+      "id": "velocity",
+      "title": "Vehicle Velocity (kph)",
+      "chart_type": "line",
+      "signals": ["ws22_velocity.vehicle_velocity_kph", "ws22_velocity.motor_velocity_rpm"],
+      "grid": { "col": 0, "row": 0, "col_span": 2, "row_span": 1 }
+    },
+    {
+      "id": "motor_temp",
+      "title": "Motor Temp",
+      "chart_type": "gauge",
+      "signals": ["ws22_temp.motor_temp"],
+      "gauge": { "min": 0, "max": 120, "unit": "C" },
+      "grid": { "col": 2, "row": 0, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "pack_voltage",
+      "title": "Pack Voltage & Current",
+      "chart_type": "line",
+      "signals": ["battery_stats_A.pack_voltage", "battery_stats_A.pack_current"],
+      "grid": { "col": 0, "row": 1, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "pack_soc",
+      "title": "State of Charge",
+      "chart_type": "gauge",
+      "signals": ["battery_stats_A.pack_soc"],
+      "gauge": { "min": 0, "max": 100, "unit": "%" },
+      "grid": { "col": 1, "row": 1, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "heatsink_temp",
+      "title": "Heatsink Temp",
+      "chart_type": "gauge",
+      "signals": ["ws22_temp.heatsink_temp"],
+      "gauge": { "min": 0, "max": 100, "unit": "C" },
+      "grid": { "col": 2, "row": 1, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "pedals",
+      "title": "Pedal & Brake %",
+      "chart_type": "line",
+      "signals": ["drive_status.pedal_percentage", "drive_status.brake_percentage"],
+      "grid": { "col": 0, "row": 2, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "imu",
+      "title": "IMU (roll / pitch / yaw)",
+      "chart_type": "line",
+      "signals": ["imu_data.roll", "imu_data.pitch", "imu_data.yaw"],
+      "grid": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 }
+    },
+    {
+      "id": "bus",
+      "title": "Motor Bus (voltage cV / current cA)",
+      "chart_type": "line",
+      "signals": ["ws22_bus.bus_voltage_cv", "ws22_bus.bus_current_ca"],
+      "grid": { "col": 0, "row": 3, "col_span": 2, "row_span": 1 }
+    },
+    {
+      "id": "cell_voltage",
+      "title": "Cell Voltage (max / min)",
+      "chart_type": "line",
+      "signals": ["battery_stats_B.max_cell_voltage", "battery_stats_B.min_cell_voltage"],
+      "grid": { "col": 2, "row": 3, "col_span": 1, "row_span": 1 }
+    }
+  ]
+}
