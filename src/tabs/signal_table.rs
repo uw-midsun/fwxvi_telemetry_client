@@ -1,4 +1,5 @@
 use crate::db::signal_store::{get_stats, query_since};
+use crate::decoder::can_config::EnumLookup;
 use crate::replay::SignalSnapshot;
 use egui_extras::{Column, TableBuilder};
 use rusqlite::Connection;
@@ -18,7 +19,7 @@ struct DisplayRow {
     key:       String,
     message:   String,
     signal:    String,
-    value:     i64,
+    value:     f64,
     reads:     u32,
     timestamp: String,
     can_id:    u32,
@@ -74,7 +75,6 @@ impl SignalTableTab {
     // ── Replay path ───────────────────────────────────────────────────────────
 
     /// Replace current rows with a replay snapshot.
-    /// Reads comes directly from the DB sample count — deterministic at any timestamp.
     pub fn load_snapshot(&mut self, snapshots: &[SignalSnapshot]) {
         self.rows.clear();
         for s in snapshots {
@@ -93,7 +93,7 @@ impl SignalTableTab {
 
     // ── Shared upsert ─────────────────────────────────────────────────────────
 
-    fn upsert(&mut self, message: String, signal: String, value: i64, timestamp: String, can_id: u32) {
+    fn upsert(&mut self, message: String, signal: String, value: f64, timestamp: String, can_id: u32) {
         let key = format!("{message}::{signal}");
         let count = self.read_counts.entry(key.clone()).or_insert(0);
         *count += 1;
@@ -110,18 +110,16 @@ impl SignalTableTab {
 
     // ── Render ────────────────────────────────────────────────────────────────
 
-    /// Live render: polls DB then draws table.
-    pub fn show(&mut self, ui: &mut egui::Ui, conn: &Connection) {
+    pub fn show(&mut self, ui: &mut egui::Ui, conn: &Connection, enum_lookup: &EnumLookup) {
         self.poll_live(conn);
-        self.draw(ui, false);
+        self.draw(ui, false, enum_lookup);
     }
 
-    /// Replay render: just draws current rows (caller manages when to call load_snapshot).
-    pub fn show_replay(&mut self, ui: &mut egui::Ui) {
-        self.draw(ui, true);
+    pub fn show_replay(&mut self, ui: &mut egui::Ui, enum_lookup: &EnumLookup) {
+        self.draw(ui, true, enum_lookup);
     }
 
-    fn draw(&self, ui: &mut egui::Ui, is_replay: bool) {
+    fn draw(&self, ui: &mut egui::Ui, is_replay: bool, enum_lookup: &EnumLookup) {
         ui.horizontal(|ui| {
             if is_replay {
                 ui.label(format!("Signals: {}  (replay)", self.rows.len()));
@@ -159,11 +157,21 @@ impl SignalTableTab {
                     let r = &self.rows[row.index()];
                     row.col(|ui| { ui.label(&r.message); });
                     row.col(|ui| { ui.label(&r.signal); });
-                    row.col(|ui| { ui.label(r.value.to_string()); });
+                    row.col(|ui| { ui.label(format_value(r.value, &r.message, &r.signal, enum_lookup)); });
                     row.col(|ui| { ui.label(r.reads.to_string()); });
                     row.col(|ui| { ui.label(&r.timestamp); });
                     row.col(|ui| { ui.label(format!("0x{:03X}", r.can_id)); });
                 });
             });
     }
+}
+
+fn format_value(value: f64, message: &str, signal: &str, enum_lookup: &EnumLookup) -> String {
+    if let Some(map) = enum_lookup.get(&(message.to_string(), signal.to_string())) {
+        let key = (value as i64).to_string();
+        if let Some(label) = map.get(&key) {
+            return label.clone();
+        }
+    }
+    format!("{}", value)
 }

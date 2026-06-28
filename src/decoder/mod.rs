@@ -198,7 +198,8 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
     let ts = chrono::Utc::now().to_rfc3339();
 
     for sig in &msg.signals {
-        let value = extract_signal(payload, sig.start_bit, sig.length);
+        let raw = extract_signal(payload, sig.start_bit, sig.length, sig.signed);
+        let value = raw as f64 * sig.scale.unwrap_or(1.0);
         let sample = SignalSample {
             timestamp:    ts.clone(),
             can_id:       dgram.id as u32,

@@ -28,6 +28,15 @@ messages:
   - name: drive_state
     start_bit: 32
     length: 3
+    enum:
+      '0': INVALID
+      '1': NEUTRAL
+      '2': DRIVE
+      '3': REVERSE
+      '4': CRUISE
+      '5': BRAKE
+      '6': REGEN
+      '7': FAULT
   - name: brake_enabled
     start_bit: 35
     length: 1
@@ -515,9 +524,12 @@ messages:
   - name: bus_voltage_cv
     start_bit: 0
     length: 16
+    scale: 0.01
   - name: bus_current_ca
     start_bit: 16
     length: 16
+    scale: 0.01
+    signed: true
 - id: 2036
   name: ws22_velocity
   dlc: 4
@@ -525,9 +537,12 @@ messages:
   - name: motor_velocity_rpm
     start_bit: 0
     length: 16
+    scale: 0.1
+    signed: true
   - name: vehicle_velocity_kph
     start_bit: 16
     length: 16
+    scale: 0.01
 - id: 2037
   name: ws22_temp
   dlc: 4
@@ -535,9 +550,13 @@ messages:
   - name: motor_temp
     start_bit: 0
     length: 16
+    scale: 0.1
+    signed: true
   - name: heatsink_temp
     start_bit: 16
     length: 16
+    scale: 0.1
+    signed: true
 - id: 2038
   name: ws22_drive_cmd
   dlc: 4
@@ -545,6 +564,8 @@ messages:
   - name: drive_current
     start_bit: 0
     length: 16
+    scale: 0.0001
   - name: drive_velocity_rpm
     start_bit: 16
     length: 16
+    signed: true

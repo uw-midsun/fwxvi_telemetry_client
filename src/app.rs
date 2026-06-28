@@ -1,4 +1,5 @@
 use crate::config::{db_path, AppConfig};
+use crate::decoder::can_config::{self, EnumLookup};
 use crate::decoder::DecoderCmd;
 use crate::replay::{ReplayController, SPEEDS};
 use crate::tabs::{
@@ -32,6 +33,8 @@ pub struct TelemetryApp {
 
     // Replay
     replay:        Option<ReplayController>,
+
+    enum_lookup:   EnumLookup,
 }
 
 impl TelemetryApp {
@@ -39,6 +42,9 @@ impl TelemetryApp {
         let (cfg, settings_path) = AppConfig::load_or_default();
         let db_conn = crate::db::open(&db_path()).ok();
         let settings_tab = SettingsTab::new(&cfg);
+
+        let messages = can_config::load(&resolve_yaml(&cfg.can_yaml_path)).unwrap_or_default();
+        let enum_lookup = can_config::build_enum_lookup(&messages);
 
         Self {
             cfg: cfg.clone(),
@@ -51,6 +57,7 @@ impl TelemetryApp {
             connected:     false,
             decoder_tx:    None,
             replay:        None,
+            enum_lookup,
         }
     }
 
@@ -74,6 +81,11 @@ impl TelemetryApp {
         let (tx, rx) = crossbeam_channel::bounded(1);
         let db   = db_path();
         let yaml = resolve_yaml(&self.cfg.can_yaml_path);
+
+        // Refresh enum lookup in case the YAML path changed since startup
+        if let Ok(messages) = can_config::load(&yaml) {
+            self.enum_lookup = can_config::build_enum_lookup(&messages);
+        }
 
         thread::spawn(move || crate::decoder::run(port, rx, db, yaml));
 
@@ -172,9 +184,9 @@ impl eframe::App for TelemetryApp {
             match self.active_tab {
                 Tab::SignalTable => {
                     if self.replay.is_some() {
-                        self.signal_table.show_replay(ui);
+                        self.signal_table.show_replay(ui, &self.enum_lookup);
                     } else if let Some(ref conn) = self.db_conn {
-                        self.signal_table.show(ui, conn);
+                        self.signal_table.show(ui, conn, &self.enum_lookup);
                     } else {
                         ui.label("Database unavailable.");
                     }

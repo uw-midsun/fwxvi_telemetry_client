@@ -135,7 +135,18 @@ def resolve_dbc_name(board: str, raw_name: str, output_name: str) -> list[str]:
     return resolved
 
 
-def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, Any]]:
+def load_postprocess_rules(postprocess_path: Path) -> dict[str, Any]:
+    if not postprocess_path.exists():
+        return {}
+    data = yaml.safe_load(postprocess_path.read_text(encoding="utf-8")) or {}
+    return data.get("rules", {})
+
+
+def generate_global_messages(
+    cache_dir: Path,
+    dbc_path: Path,
+    postprocess_rules: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     dbc_message_ids = parse_dbc_message_ids(dbc_path)
 
     messages: list[dict[str, Any]] = []
@@ -180,6 +191,17 @@ def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, 
 
             signals, total_bits = flattened_signals(message_cfg.get("signals", {}))
 
+            if postprocess_rules:
+                for sig in signals:
+                    key = f"{output_name}.{sig['name']}"
+                    rule = postprocess_rules.get(key, {})
+                    if "scale" in rule:
+                        sig["scale"] = float(rule["scale"])
+                    if "signed" in rule:
+                        sig["signed"] = bool(rule["signed"])
+                    if "enum" in rule:
+                        sig["enum"] = {str(k): str(v) for k, v in rule["enum"].items()}
+
             messages.append(
                 {
                     "id": message_id,
@@ -219,6 +241,12 @@ def main() -> None:
         default=Path("can") / "global_can.yaml",
         help="Output path for generated global CAN YAML",
     )
+    parser.add_argument(
+        "--postprocess",
+        type=Path,
+        default=Path("can") / "postprocess.yaml",
+        help="Path to postprocessing rules YAML (never overwritten by fetcher)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -229,13 +257,17 @@ def main() -> None:
         args.dbc_path if args.dbc_path.is_absolute() else repo_root / args.dbc_path
     )
     output_path = args.output if args.output.is_absolute() else repo_root / args.output
+    postprocess_path = (
+        args.postprocess if args.postprocess.is_absolute() else repo_root / args.postprocess
+    )
 
     if not cache_dir.exists():
         raise FileNotFoundError(f"Cache directory not found: {cache_dir}")
     if not dbc_path.exists():
         raise FileNotFoundError(f"DBC file not found: {dbc_path}")
 
-    messages = generate_global_messages(cache_dir, dbc_path)
+    postprocess_rules = load_postprocess_rules(postprocess_path)
+    messages = generate_global_messages(cache_dir, dbc_path, postprocess_rules)
     payload = {"messages": messages}
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

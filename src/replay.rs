@@ -7,7 +7,7 @@ pub struct SignalSnapshot {
     pub can_id:       u32,
     pub message_name: String,
     pub signal_name:  String,
-    pub value:        i64,
+    pub value:        f64,
     pub timestamp:    String,
     pub reads:        u64,   // COUNT of samples for this signal up to current_ts
 }
@@ -149,7 +149,7 @@ impl ReplayController {
                 can_id:       r.get::<_, i64>(0)? as u32,
                 message_name: r.get(1)?,
                 signal_name:  r.get(2)?,
-                value:        r.get(3)?,
+                value:        r.get::<_, f64>(3)?,
                 timestamp:    r.get(4)?,
                 reads:        r.get::<_, i64>(5)? as u64,
             })

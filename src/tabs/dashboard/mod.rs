@@ -133,7 +133,7 @@ impl DashboardTab {
                     conn, msg, sig, &since, &until, 5000,
                 ) {
                     let pts: Vec<[f64; 2]> = rows.iter()
-                        .map(|(ts, v)| [crate::replay::parse_ts(ts) - offset, *v as f64])
+                        .map(|(ts, v)| [crate::replay::parse_ts(ts) - offset, *v])
                         .collect();
                     new_cache.insert(sig_key, pts);
                 }

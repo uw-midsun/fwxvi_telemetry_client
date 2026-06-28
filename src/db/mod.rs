@@ -23,7 +23,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
             parent_name  TEXT    NOT NULL,
             message_name TEXT    NOT NULL,
             signal_name  TEXT    NOT NULL,
-            value        INTEGER NOT NULL
+            value        REAL    NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_signal_samples_id ON signal_samples(id);
 

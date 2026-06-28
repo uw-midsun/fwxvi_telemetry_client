@@ -7,7 +7,7 @@ pub struct SignalSample {
     pub parent_name:  String,
     pub message_name: String,
     pub signal_name:  String,
-    pub value:        i64,
+    pub value:        f64,
 }
 
 pub struct SignalRow {
@@ -16,7 +16,7 @@ pub struct SignalRow {
     pub can_id:       u32,
     pub message_name: String,
     pub signal_name:  String,
-    pub value:        i64,
+    pub value:        f64,
 }
 
 pub fn insert_signal(conn: &Connection, s: &SignalSample) -> Result<()> {
@@ -58,8 +58,6 @@ pub fn query_since(conn: &Connection, after_id: i64, limit: usize) -> Result<Vec
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
-/// Fetch (timestamp, value) pairs for one signal within a time window (used by dashboard in Phase 2).
-#[allow(dead_code)]
 pub fn query_signal_history(
     conn: &Connection,
     message_name: &str,
@@ -67,7 +65,7 @@ pub fn query_signal_history(
     since_ts: &str,
     until_ts: &str,
     limit: usize,
-) -> Result<Vec<(String, i64)>> {
+) -> Result<Vec<(String, f64)>> {
     let mut stmt = conn.prepare_cached(
         "SELECT timestamp, value FROM signal_samples
          WHERE message_name = ?1
@@ -79,7 +77,7 @@ pub fn query_signal_history(
     )?;
     let rows = stmt.query_map(
         rusqlite::params![message_name, signal_name, since_ts, until_ts, limit as i64],
-        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)),
     )?;
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
