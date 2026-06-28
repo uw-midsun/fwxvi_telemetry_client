@@ -173,5 +173,6 @@ fn format_value(value: f64, message: &str, signal: &str, enum_lookup: &EnumLooku
             return label.clone();
         }
     }
-    format!("{}", value)
+    let s = format!("{:.6}", value);
+    s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
