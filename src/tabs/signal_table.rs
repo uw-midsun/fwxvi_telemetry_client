@@ -159,11 +159,17 @@ impl SignalTableTab {
                     row.col(|ui| { ui.label(&r.signal); });
                     row.col(|ui| { ui.label(format_value(r.value, &r.message, &r.signal, enum_lookup)); });
                     row.col(|ui| { ui.label(r.reads.to_string()); });
-                    row.col(|ui| { ui.label(&r.timestamp); });
+                    row.col(|ui| { ui.label(format_timestamp(&r.timestamp)); });
                     row.col(|ui| { ui.label(format!("0x{:03X}", r.can_id)); });
                 });
             });
     }
+}
+
+fn format_timestamp(ts: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(ts)
+        .map(|dt| dt.format("%H:%M:%S%.3f").to_string())
+        .unwrap_or_else(|_| ts.to_string())
 }
 
 fn format_value(value: f64, message: &str, signal: &str, enum_lookup: &EnumLookup) -> String {
