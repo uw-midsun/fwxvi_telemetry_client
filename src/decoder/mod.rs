@@ -137,6 +137,9 @@ pub fn run(
     let mut parser = Parser::new();
     let mut byte_buf = [0u8; 1];
     let mut batch_bytes: i64 = 0;
+    let mut parsed: i64 = 0;
+    let mut matched: i64 = 0;
+    let mut unmatched: i64 = 0;
     let mut last_flush = std::time::Instant::now();
 
     loop {
@@ -155,7 +158,12 @@ pub fn run(
                     if debug_bytes {
                         eprintln!("\n[dgram] id={:#06X} dlc={} data={:02X?}", dgram.id, dgram.dlc, dgram.data);
                     }
-                    decode_datagram(&conn, &dgram, &messages, debug_bytes);
+                    parsed += 1;
+                    if decode_datagram(&conn, &dgram, &messages, debug_bytes) {
+                        matched += 1;
+                    } else {
+                        unmatched += 1;
+                    }
                 }
             }
             Ok(_) => {}
@@ -166,25 +174,44 @@ pub fn run(
             }
         }
 
-        // Flush byte-count stat every second
+        // Flush accumulated counters every second, off the per-datagram hot path.
         if last_flush.elapsed().as_secs() >= 1 {
-            let _ = increment_stat(&conn, "parse_byte_calls", batch_bytes);
-            batch_bytes = 0;
+            flush_stats(&conn, &mut batch_bytes, &mut parsed, &mut matched, &mut unmatched);
             last_flush = std::time::Instant::now();
         }
     }
+
+    // Flush the tail so counts since the last flush aren't lost on stop/error exit.
+    flush_stats(&conn, &mut batch_bytes, &mut parsed, &mut matched, &mut unmatched);
 }
 
-fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage], debug: bool) {
-    let _ = increment_stat(conn, "parsed_messages", 1);
+/// Writes accumulated decoder counters to `decoder_stats` and resets them to zero.
+fn flush_stats(
+    conn: &Connection,
+    batch_bytes: &mut i64,
+    parsed: &mut i64,
+    matched: &mut i64,
+    unmatched: &mut i64,
+) {
+    let _ = increment_stat(conn, "parse_byte_calls", *batch_bytes);
+    let _ = increment_stat(conn, "parsed_messages", *parsed);
+    let _ = increment_stat(conn, "matched_messages", *matched);
+    let _ = increment_stat(conn, "unmatched_messages", *unmatched);
+    *batch_bytes = 0;
+    *parsed = 0;
+    *matched = 0;
+    *unmatched = 0;
+}
 
+/// Decodes one datagram, inserting all of its signals in a single transaction.
+/// Returns `true` if the datagram matched a known CAN message. Stat counters are
+/// accumulated by the caller and flushed periodically, off the hot path.
+fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage], debug: bool) -> bool {
     let Some(msg) = messages.iter().find(|m| m.id == dgram.id as u32) else {
-        let _ = increment_stat(conn, "unmatched_messages", 1);
         eprintln!("[decoder] no match for CAN ID {:#06X}", dgram.id);
-        return;
+        return false;
     };
 
-    let _ = increment_stat(conn, "matched_messages", 1);
     if debug {
         eprintln!("[decoder] matched id={:#06X} name={}", dgram.id, msg.name);
     }
@@ -195,19 +222,31 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
         payload |= (b as u64) << (i * 8);
     }
 
-    let ts = chrono::Utc::now().to_rfc3339();
+    let ts_ms = chrono::Utc::now().timestamp_millis();
 
+    // One transaction per datagram: collapses N loose autocommits into a single
+    // WAL commit. `unchecked_transaction` borrows &Connection; &tx deref-coerces
+    // to &Connection for insert_signal.
+    let tx = match conn.unchecked_transaction() {
+        Ok(tx) => tx,
+        Err(e) => {
+            eprintln!("[decoder] cannot begin transaction: {e}");
+            return true;
+        }
+    };
     for sig in &msg.signals {
         let raw = extract_signal(payload, sig.start_bit, sig.length, sig.signed);
         let value = raw as f64 * sig.scale.unwrap_or(1.0);
         let sample = SignalSample {
-            timestamp:    ts.clone(),
+            ts_ms,
             can_id:       dgram.id as u32,
             parent_name:  msg.name.clone(),
             message_name: msg.name.clone(),
             signal_name:  sig.name.clone(),
             value,
         };
-        let _ = insert_signal(conn, &sample);
+        let _ = insert_signal(&tx, &sample);
     }
+    let _ = tx.commit();
+    true
 }

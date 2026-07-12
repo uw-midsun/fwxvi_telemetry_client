@@ -3,7 +3,7 @@ use crate::decoder::can_config::{self, EnumLookup};
 use crate::decoder::DecoderCmd;
 use crate::replay::{ReplayController, SPEEDS};
 use crate::tabs::{
-    dashboard::DashboardTab, settings::SettingsTab, signal_table::SignalTableTab,
+    cells::CellsTab, dashboard::DashboardTab, settings::SettingsTab, signal_table::SignalTableTab,
 };
 use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ use std::thread;
 enum Tab {
     SignalTable,
     Dashboard,
+    Cells,
     Settings,
 }
 
@@ -23,6 +24,7 @@ pub struct TelemetryApp {
 
     signal_table:  SignalTableTab,
     dashboard:     DashboardTab,
+    cells_tab:     CellsTab,
     settings_tab:  SettingsTab,
 
     active_tab:    Tab,
@@ -52,6 +54,7 @@ impl TelemetryApp {
             db_conn,
             signal_table:  SignalTableTab::new(),
             dashboard:     DashboardTab::new(),
+            cells_tab:     CellsTab::new(),
             settings_tab,
             active_tab:    Tab::SignalTable,
             connected:     false,
@@ -155,6 +158,7 @@ impl eframe::App for TelemetryApp {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::SignalTable, "Signal Table");
                 ui.selectable_value(&mut self.active_tab, Tab::Dashboard,   "Dashboard");
+                ui.selectable_value(&mut self.active_tab, Tab::Cells,       "Cells");
                 ui.selectable_value(&mut self.active_tab, Tab::Settings,    "Settings");
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -197,7 +201,10 @@ impl eframe::App for TelemetryApp {
                     }
                 }
                 Tab::Dashboard => {
-                    self.dashboard.show(ui, self.db_conn.as_ref());
+                    self.dashboard.show(ui, self.db_conn.as_ref(), &self.enum_lookup);
+                }
+                Tab::Cells => {
+                    self.cells_tab.show(ui, self.db_conn.as_ref());
                 }
                 Tab::Settings => {
                     let mut cfg            = self.cfg.clone();

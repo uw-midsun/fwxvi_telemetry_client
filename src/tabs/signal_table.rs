@@ -21,7 +21,7 @@ struct DisplayRow {
     signal:    String,
     value:     f64,
     reads:     u32,
-    timestamp: String,
+    ts_ms:     i64,
     can_id:    u32,
 }
 
@@ -55,7 +55,7 @@ impl SignalTableTab {
         if let Ok(new_rows) = query_since(conn, self.last_id, 500) {
             for row in new_rows {
                 self.last_id = self.last_id.max(row.id);
-                self.upsert(row.message_name, row.signal_name, row.value, row.timestamp, row.can_id);
+                self.upsert(row.message_name, row.signal_name, row.value, row.ts_ms, row.can_id);
             }
         }
 
@@ -85,7 +85,7 @@ impl SignalTableTab {
                 signal:    s.signal_name.clone(),
                 value:     s.value,
                 reads:     s.reads as u32,
-                timestamp: s.timestamp.clone(),
+                ts_ms:     s.ts_ms,
                 can_id:    s.can_id,
             });
         }
@@ -93,18 +93,18 @@ impl SignalTableTab {
 
     // ── Shared upsert ─────────────────────────────────────────────────────────
 
-    fn upsert(&mut self, message: String, signal: String, value: f64, timestamp: String, can_id: u32) {
+    fn upsert(&mut self, message: String, signal: String, value: f64, ts_ms: i64, can_id: u32) {
         let key = format!("{message}::{signal}");
         let count = self.read_counts.entry(key.clone()).or_insert(0);
         *count += 1;
         let reads = *count;
 
         if let Some(r) = self.rows.iter_mut().find(|r| r.key == key) {
-            r.value     = value;
-            r.reads     = reads;
-            r.timestamp = timestamp;
+            r.value = value;
+            r.reads = reads;
+            r.ts_ms = ts_ms;
         } else {
-            self.rows.push(DisplayRow { key, message, signal, value, reads, timestamp, can_id });
+            self.rows.push(DisplayRow { key, message, signal, value, reads, ts_ms, can_id });
         }
     }
 
@@ -159,17 +159,17 @@ impl SignalTableTab {
                     row.col(|ui| { ui.label(&r.signal); });
                     row.col(|ui| { ui.label(format_value(r.value, &r.message, &r.signal, enum_lookup)); });
                     row.col(|ui| { ui.label(r.reads.to_string()); });
-                    row.col(|ui| { ui.label(format_timestamp(&r.timestamp)); });
+                    row.col(|ui| { ui.label(fmt_ts_ms(r.ts_ms)); });
                     row.col(|ui| { ui.label(format!("0x{:03X}", r.can_id)); });
                 });
             });
     }
 }
 
-fn format_timestamp(ts: &str) -> String {
-    chrono::DateTime::parse_from_rfc3339(ts)
-        .map(|dt| dt.format("%H:%M:%S%.3f").to_string())
-        .unwrap_or_else(|_| ts.to_string())
+fn fmt_ts_ms(ts_ms: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ts_ms)
+        .map(|dt: chrono::DateTime<chrono::Utc>| dt.format("%H:%M:%S%.3f").to_string())
+        .unwrap_or_default()
 }
 
 fn format_value(value: f64, message: &str, signal: &str, enum_lookup: &EnumLookup) -> String {

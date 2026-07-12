@@ -4,7 +4,8 @@ mod config;
 pub use config::DashboardSetup;
 use config::PanelConfig;
 
-use charts::DataCache;
+use crate::decoder::can_config::EnumLookup;
+use charts::{DataCache, RenderCache};
 use rusqlite::Connection;
 use std::collections::BTreeMap;
 
@@ -21,6 +22,7 @@ pub struct DashboardTab {
     manual_end:       String,
     // Data
     cache:            DataCache,
+    render:           RenderCache,   // render-ready artifacts, rebuilt at refresh cadence
     window_start_ts:  f64,   // unix epoch; x-axis values are relative to this
     last_refresh:     std::time::Instant,
 }
@@ -41,18 +43,19 @@ impl DashboardTab {
             manual_start:    String::new(),
             manual_end:      String::new(),
             cache:           DataCache::new(),
+            render:          RenderCache::default(),
             window_start_ts: 0.0,
             last_refresh:    std::time::Instant::now()
                              - std::time::Duration::from_secs(10),
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, conn: Option<&Connection>) {
+    pub fn show(&mut self, ui: &mut egui::Ui, conn: Option<&Connection>, enum_lookup: &EnumLookup) {
         self.draw_toolbar(ui);
         ui.separator();
 
         if let Some(conn) = conn {
-            self.maybe_refresh(conn);
+            self.maybe_refresh(conn, enum_lookup);
         }
 
         self.draw_panels(ui);
@@ -117,18 +120,17 @@ impl DashboardTab {
 
     // ── Data fetch ────────────────────────────────────────────────────────────
 
-    fn maybe_refresh(&mut self, conn: &Connection) {
+    fn maybe_refresh(&mut self, conn: &Connection, enum_lookup: &EnumLookup) {
         let elapsed    = self.last_refresh.elapsed().as_millis();
         let stale      = self.live && elapsed >= REFRESH_MS;
         let first_load = self.cache.is_empty() && !self.setup.panels.is_empty();
 
         if !stale && !first_load { return; }
 
-        let (since, until) = self.time_range();
-        if since.is_empty() || until.is_empty() { return; }
+        let Some((since_ms, until_ms)) = self.time_range() else { return; };
 
         self.last_refresh    = std::time::Instant::now();
-        self.window_start_ts = crate::replay::parse_ts(&since);
+        self.window_start_ts = since_ms as f64 / 1000.0;
 
         // Unique signals across all panels
         let signal_keys: std::collections::HashSet<String> = self.setup.panels.iter()
@@ -141,26 +143,35 @@ impl DashboardTab {
         for sig_key in signal_keys {
             if let Some((msg, sig)) = PanelConfig::signal_parts(&sig_key) {
                 if let Ok(rows) = crate::db::signal_store::query_signal_history(
-                    conn, msg, sig, &since, &until, 5000,
+                    conn, msg, sig, since_ms, until_ms, 5000,
                 ) {
+                    // Integer ms → relative seconds: a cheap arithmetic op per point
+                    // instead of an RFC3339 parse.
                     let pts: Vec<[f64; 2]> = rows.iter()
-                        .map(|(ts, v)| [crate::replay::parse_ts(ts) - offset, *v])
+                        .map(|(ts_ms, v)| [*ts_ms as f64 / 1000.0 - offset, *v])
                         .collect();
                     new_cache.insert(sig_key, pts);
                 }
             }
         }
 
-        self.cache = new_cache;
+        // Rebuild render-ready artifacts here (refresh cadence), so the draw path
+        // never decimates, rebins, or clones raw vectors.
+        self.render = RenderCache::build(&new_cache, &self.setup.panels, enum_lookup);
+        self.cache  = new_cache;
     }
 
-    fn time_range(&self) -> (String, String) {
+    /// Returns the `(since_ms, until_ms)` window in epoch milliseconds, or `None`
+    /// when the manual history fields are empty or not valid RFC3339.
+    fn time_range(&self) -> Option<(i64, i64)> {
         if self.live {
-            let now   = chrono::Utc::now();
-            let since = now - chrono::Duration::seconds(self.window_secs as i64);
-            (since.to_rfc3339(), now.to_rfc3339())
+            let now_ms   = chrono::Utc::now().timestamp_millis();
+            let since_ms = now_ms - (self.window_secs * 1000.0) as i64;
+            Some((since_ms, now_ms))
         } else {
-            (self.manual_start.trim().to_string(), self.manual_end.trim().to_string())
+            let since_ms = parse_rfc3339_ms(self.manual_start.trim())?;
+            let until_ms = parse_rfc3339_ms(self.manual_end.trim())?;
+            Some((since_ms, until_ms))
         }
     }
 
@@ -197,7 +208,7 @@ impl DashboardTab {
                         ui.allocate_ui(egui::vec2(w, PANEL_HEIGHT + 28.0), |ui| {
                             ui.vertical(|ui| {
                                 ui.strong(&panel.title);
-                                charts::draw_panel(ui, panel, &self.cache, PANEL_HEIGHT);
+                                charts::draw_panel(ui, panel, &self.render, PANEL_HEIGHT);
                             });
                         });
                     }
@@ -207,6 +218,13 @@ impl DashboardTab {
             }
         });
     }
+}
+
+// Parse an RFC3339 timestamp (as typed in the History fields) to epoch milliseconds.
+fn parse_rfc3339_ms(s: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(s)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
 }
 
 // Simple pipe helper to avoid a temp variable when chaining method calls on a value

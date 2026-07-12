@@ -68,6 +68,69 @@
       "chart_type": "line",
       "signals": ["battery_stats_B.max_cell_voltage", "battery_stats_B.min_cell_voltage"],
       "grid": { "col": 2, "row": 3, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "readouts",
+      "title": "Key Readouts",
+      "chart_type": "numeric",
+      "signals": ["battery_stats_A.pack_soc", "ws22_velocity.vehicle_velocity_kph"],
+      "grid": { "col": 0, "row": 4, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "throttle",
+      "title": "Throttle",
+      "chart_type": "bar",
+      "signals": ["drive_status.pedal_percentage"],
+      "gauge": { "min": 0, "max": 100, "unit": "%" },
+      "grid": { "col": 1, "row": 4, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "current_voltage",
+      "title": "Pack Current & Voltage",
+      "chart_type": "line",
+      "signals": ["battery_stats_A.pack_current", "battery_stats_A.pack_voltage"],
+      "grid": { "col": 2, "row": 4, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "vehicle_status",
+      "title": "Vehicle Status",
+      "chart_type": "status",
+      "signals": ["drive_status.drive_state", "rear_controller_status.bps_fault"],
+      "grid": { "col": 0, "row": 5, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "discharge_bits",
+      "title": "Cell Discharge Bits",
+      "chart_type": "leds",
+      "signals": [
+        "AFE_discharge_bitset.cell_0", "AFE_discharge_bitset.cell_1",
+        "AFE_discharge_bitset.cell_2", "AFE_discharge_bitset.cell_3",
+        "AFE_discharge_bitset.cell_4", "AFE_discharge_bitset.cell_5",
+        "AFE_discharge_bitset.cell_6", "AFE_discharge_bitset.cell_7",
+        "AFE_discharge_bitset.cell_8", "AFE_discharge_bitset.cell_9",
+        "AFE_discharge_bitset.cell_10", "AFE_discharge_bitset.cell_11",
+        "AFE_discharge_bitset.cell_12", "AFE_discharge_bitset.cell_13",
+        "AFE_discharge_bitset.cell_14", "AFE_discharge_bitset.cell_15"
+      ],
+      "grid": { "col": 1, "row": 5, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "velocity_stats",
+      "title": "Velocity (window stats)",
+      "chart_type": "stat",
+      "signals": ["ws22_velocity.vehicle_velocity_kph"],
+      "grid": { "col": 2, "row": 5, "col_span": 1, "row_span": 1 }
+    },
+    {
+      "id": "accessory_currents",
+      "title": "Accessory Currents",
+      "chart_type": "bars",
+      "signals": [
+        "fc_power_group_A.rev_cam_current", "fc_power_group_A.telem_current",
+        "fc_power_group_A.steering_current", "fc_power_group_A.driver_fan_current",
+        "fc_power_group_B.horn_current", "fc_power_group_B.spare_current"
+      ],
+      "grid": { "col": 0, "row": 6, "col_span": 2, "row_span": 1 }
     }
   ]
 }

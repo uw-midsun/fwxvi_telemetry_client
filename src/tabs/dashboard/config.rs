@@ -8,6 +8,12 @@ pub enum ChartType {
     Gauge,
     Histogram,
     Scatter,
+    Numeric,
+    Bar,
+    Status,
+    Leds,
+    Bars,
+    Stat,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
