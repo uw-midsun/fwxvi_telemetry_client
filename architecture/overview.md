@@ -16,13 +16,23 @@ src/
 │   └── can_config.rs           CAN YAML load, SignalDef/CanMessage, extract_signal()
 ├── replay.rs                   ReplayController: read-only DB playback + snapshot()
 └── tabs/
-    ├── mod.rs                  re-exports the three tabs
+    ├── mod.rs                  re-exports the tabs
     ├── signal_table.rs         SignalTableTab: live/replay signal grid
     ├── settings.rs             SettingsTab: port/baud/yaml/replay controls
-    └── dashboard/
-        ├── mod.rs              DashboardTab: toolbar, refresh loop, panel grid
-        ├── config.rs           DashboardSetup / PanelConfig / ChartType / GridPos
-        └── charts.rs           draw_panel() → line/gauge/histogram/scatter renderers
+    ├── dashboard/
+    │   ├── mod.rs              DashboardTab: toolbar, refresh loop, panel grid
+    │   ├── config.rs           DashboardSetup / PanelConfig / ChartType / GridPos
+    │   └── charts.rs           draw_panel() → line/gauge/histogram/scatter renderers
+    └── fota/                   firmware-over-the-air flashing (ms-bootloader port, XBee only)
+        ├── mod.rs              FotaTab: connect/flash/recovery UI, worker lifecycle
+        ├── protocol.rs         bootloader datagram codec, mirrors bl_datagram.h
+        ├── serial.rs           XBee UART framing (0x7E/0x7D/0x7C), host side of bl_transport_uart.c
+        ├── transport.rs        Transport trait the DFU engine drives
+        ├── client.rs           stop-and-wait DFU engine (metadata → chunks → jump)
+        ├── worker.rs           thread that owns the COM port, spawned on Connect
+        ├── shared.rs           GUI↔worker command/event channels
+        ├── image.rs            .elf→.bin via objcopy, manifest pre-fill
+        └── names.rs            node id → board name map
 ```
 
 ## Storage / ownership model

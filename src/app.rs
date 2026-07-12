@@ -3,7 +3,8 @@ use crate::decoder::can_config::{self, EnumLookup};
 use crate::decoder::DecoderCmd;
 use crate::replay::{ReplayController, SPEEDS};
 use crate::tabs::{
-    cells::CellsTab, dashboard::DashboardTab, settings::SettingsTab, signal_table::SignalTableTab,
+    cells::CellsTab, dashboard::DashboardTab, fota::FotaTab, settings::SettingsTab,
+    signal_table::SignalTableTab,
 };
 use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,7 @@ enum Tab {
     SignalTable,
     Dashboard,
     Cells,
+    Fota,
     Settings,
 }
 
@@ -25,6 +27,7 @@ pub struct TelemetryApp {
     signal_table:  SignalTableTab,
     dashboard:     DashboardTab,
     cells_tab:     CellsTab,
+    fota:          FotaTab,
     settings_tab:  SettingsTab,
 
     active_tab:    Tab,
@@ -55,6 +58,7 @@ impl TelemetryApp {
             signal_table:  SignalTableTab::new(),
             dashboard:     DashboardTab::new(),
             cells_tab:     CellsTab::new(),
+            fota:          FotaTab::new(&cfg.com_port),
             settings_tab,
             active_tab:    Tab::SignalTable,
             connected:     false,
@@ -159,6 +163,7 @@ impl eframe::App for TelemetryApp {
                 ui.selectable_value(&mut self.active_tab, Tab::SignalTable, "Signal Table");
                 ui.selectable_value(&mut self.active_tab, Tab::Dashboard,   "Dashboard");
                 ui.selectable_value(&mut self.active_tab, Tab::Cells,       "Cells");
+                ui.selectable_value(&mut self.active_tab, Tab::Fota,        "FOTA");
                 ui.selectable_value(&mut self.active_tab, Tab::Settings,    "Settings");
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -206,6 +211,9 @@ impl eframe::App for TelemetryApp {
                 Tab::Cells => {
                     self.cells_tab.show(ui, self.db_conn.as_ref());
                 }
+                Tab::Fota => {
+                    self.fota.show(ui, self.connected);
+                }
                 Tab::Settings => {
                     let mut cfg            = self.cfg.clone();
                     let settings_path      = self.settings_path.clone();
@@ -241,6 +249,7 @@ impl eframe::App for TelemetryApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.disconnect();
+        self.fota.shutdown();
     }
 }
 
