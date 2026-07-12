@@ -56,6 +56,17 @@ impl DashboardTab {
         }
 
         self.draw_panels(ui);
+
+        // Drive the next passive repaint at our own data cadence instead of the app-wide
+        // 60fps. `last_refresh` is reset whenever maybe_refresh() actually pulls new data,
+        // so this wakes us up exactly when the next refresh is due. Only live mode moves on
+        // its own; history mode is static and repaints on user input alone.
+        if self.live {
+            let elapsed   = self.last_refresh.elapsed().as_millis();
+            let remaining = REFRESH_MS.saturating_sub(elapsed).max(1);
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(remaining as u64));
+        }
     }
 
     // ── Toolbar ───────────────────────────────────────────────────────────────

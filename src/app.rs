@@ -127,11 +127,16 @@ impl TelemetryApp {
 
 impl eframe::App for TelemetryApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Continuous repaint while live or replay is playing
-        let needs_repaint = self.connected
-            || self.replay.as_ref().map_or(false, |r| r.playing);
-        if needs_repaint {
+        // Schedule passive repaints at the cadence each surface actually needs, rather
+        // than a blanket 60fps. User input always triggers an immediate repaint on top of
+        // this, so interactivity is unaffected.
+        //   - Replay playback needs smooth ~60fps frames for the slider/table motion.
+        //   - The live signal table polls the DB every 250ms (see SignalTableTab).
+        //   - The dashboard schedules its own repaint at its data-refresh cadence.
+        if self.replay.as_ref().map_or(false, |r| r.playing) {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        } else if self.connected && self.active_tab == Tab::SignalTable {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
 
         // Tick replay and refresh signal table if position changed
