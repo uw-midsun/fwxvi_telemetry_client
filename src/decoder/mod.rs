@@ -235,8 +235,15 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
         }
     };
     for sig in &msg.signals {
-        let raw = extract_signal(payload, sig.start_bit, sig.length, sig.signed);
-        let value = raw as f64 * sig.scale.unwrap_or(1.0);
+        // Firmware float scaling wins over scale/signed: the raw code is an unsigned
+        // quantization of [min, max], inverted exactly like the autogen getters.
+        let value = if let Some((min, max)) = sig.float_range() {
+            let raw = extract_signal(payload, sig.start_bit, sig.length, false) as u64;
+            can_config::decode_float(raw, sig.length, min, max)
+        } else {
+            let raw = extract_signal(payload, sig.start_bit, sig.length, sig.signed);
+            raw as f64 * sig.scale.unwrap_or(1.0)
+        };
         let sample = SignalSample {
             ts_ms,
             can_id:       dgram.id as u32,
