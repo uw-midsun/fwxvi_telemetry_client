@@ -99,13 +99,30 @@ def flattened_signals(
             raise ValueError(f"Signal '{signal_name}' is missing required 'length'")
 
         length = int(signal_cfg["length"])
-        result.append(
-            {
-                "name": str(signal_name),
-                "start_bit": bit_cursor,
-                "length": length,
-            }
-        )
+        entry: dict[str, Any] = {
+            "name": str(signal_name),
+            "start_bit": bit_cursor,
+            "length": length,
+        }
+
+        # Float-scaled signals (firmware autogen "type: float"): a float in [min, max]
+        # quantized into the raw integer, with codes 0 and 2^length-1 reserved as
+        # under/overflow sentinels. Propagate the range so the decoder can invert it.
+        if signal_type == "float":
+            if "min" not in signal_cfg or "max" not in signal_cfg:
+                raise ValueError(
+                    f"Float signal '{signal_name}' must have 'min' and 'max' defined"
+                )
+            f_min, f_max = float(signal_cfg["min"]), float(signal_cfg["max"])
+            if f_min >= f_max:
+                raise ValueError(
+                    f"Float signal '{signal_name}': min must be less than max"
+                )
+            entry["type"] = "float"
+            entry["min"] = f_min
+            entry["max"] = f_max
+
+        result.append(entry)
         bit_cursor += length
 
     return result, bit_cursor
@@ -201,6 +218,22 @@ def generate_global_messages(
                         sig["signed"] = bool(rule["signed"])
                     if "enum" in rule:
                         sig["enum"] = {str(k): str(v) for k, v in rule["enum"].items()}
+                    if "float" in rule:
+                        # Declare (or override) firmware float scaling for this signal.
+                        # Same quantization as autogen "type: float" in the board files.
+                        f_rule = rule["float"] or {}
+                        if "min" not in f_rule or "max" not in f_rule:
+                            raise ValueError(
+                                f"float rule for '{key}' must define 'min' and 'max'"
+                            )
+                        f_min, f_max = float(f_rule["min"]), float(f_rule["max"])
+                        if f_min >= f_max:
+                            raise ValueError(
+                                f"float rule for '{key}': min must be less than max"
+                            )
+                        sig["type"] = "float"
+                        sig["min"] = f_min
+                        sig["max"] = f_max
 
             messages.append(
                 {

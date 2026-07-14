@@ -5,6 +5,18 @@
 # scale:  Multiply the raw integer by this factor; result stored as REAL in the database.
 # signed: Treat the raw bits as a two's-complement signed integer before applying scale.
 # enum:   Integer-to-label map used by the UI for display; raw integer is still stored in the DB.
+# float:  Firmware float scaling (autogen `type: float`): a float in [min, max] quantized
+#         into the signal's bits, with raw 0 = underflow and raw 2^length-1 = overflow
+#         sentinels (decoded as min-1 / max+1, exactly like the firmware getters).
+#         Signals declared `type: float` in the board yamls get this automatically via the
+#         fetcher + global_can_gen; only add a rule here to declare it for messages the
+#         board files don't cover (e.g. external hardware) or to override the range.
+#         Takes precedence over `scale`/`signed` when both are present.
+#
+#         some_message.some_signal:
+#           float:
+#             min: 0
+#             max: 200
 
 rules:
   ws22_bus.bus_voltage_cv:
