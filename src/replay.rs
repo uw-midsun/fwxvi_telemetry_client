@@ -7,8 +7,8 @@ pub struct SignalSnapshot {
     pub can_id:       u32,
     pub message_name: String,
     pub signal_name:  String,
-    pub value:        i64,
-    pub timestamp:    String,
+    pub value:        f64,
+    pub ts_ms:        i64,   // epoch milliseconds, UTC
     pub reads:        u64,   // COUNT of samples for this signal up to current_ts
 }
 
@@ -51,21 +51,21 @@ impl ReplayController {
             );
         }
 
-        // MIN/MAX return NULL on an empty table, so use Option<String>
-        let (start_opt, end_opt): (Option<String>, Option<String>) = conn
+        // MIN/MAX return NULL on an empty table, so use Option<i64>
+        let (start_opt, end_opt): (Option<i64>, Option<i64>) = conn
             .query_row(
-                "SELECT MIN(timestamp), MAX(timestamp) FROM signal_samples",
+                "SELECT MIN(ts_ms), MAX(ts_ms) FROM signal_samples",
                 [],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .context("Failed to read signal_samples")?;
 
-        let start_str = start_opt
+        let start_ms = start_opt
             .ok_or_else(|| anyhow::anyhow!("signal_samples table is empty — no data recorded yet"))?;
-        let end_str = end_opt.unwrap_or_else(|| start_str.clone());
+        let end_ms = end_opt.unwrap_or(start_ms);
 
-        let start_ts = parse_ts(&start_str);
-        let end_ts   = parse_ts(&end_str);
+        let start_ts = start_ms as f64 / 1000.0;
+        let end_ts   = end_ms   as f64 / 1000.0;
 
         Ok(Self {
             conn,
@@ -119,21 +119,21 @@ impl ReplayController {
     /// Query all signals at the current playback position (latest value per signal up to current_ts).
     pub fn snapshot(&mut self) -> Vec<SignalSnapshot> {
         self.last_rendered = self.current_ts;
-        let ts_str = format_ts_iso(self.current_ts);
+        let ts_ms = (self.current_ts * 1000.0) as i64;
 
         let mut stmt = match self.conn.prepare_cached(
-            "SELECT can_id, message_name, signal_name, value, timestamp, sample_count
+            "SELECT can_id, message_name, signal_name, value, ts_ms, sample_count
              FROM (
-                 SELECT can_id, message_name, signal_name, value, timestamp,
+                 SELECT can_id, message_name, signal_name, value, ts_ms,
                         ROW_NUMBER() OVER (
                             PARTITION BY message_name, signal_name
-                            ORDER BY timestamp DESC
+                            ORDER BY ts_ms DESC
                         ) AS rn,
                         COUNT(*) OVER (
                             PARTITION BY message_name, signal_name
                         ) AS sample_count
                  FROM signal_samples
-                 WHERE timestamp <= ?1
+                 WHERE ts_ms <= ?1
              )
              WHERE rn = 1",
         ) {
@@ -144,13 +144,13 @@ impl ReplayController {
             }
         };
 
-        stmt.query_map(rusqlite::params![ts_str], |r| {
+        stmt.query_map(rusqlite::params![ts_ms], |r| {
             Ok(SignalSnapshot {
                 can_id:       r.get::<_, i64>(0)? as u32,
                 message_name: r.get(1)?,
                 signal_name:  r.get(2)?,
-                value:        r.get(3)?,
-                timestamp:    r.get(4)?,
+                value:        r.get::<_, f64>(3)?,
+                ts_ms:        r.get::<_, i64>(4)?,
                 reads:        r.get::<_, i64>(5)? as u64,
             })
         })
@@ -186,20 +186,6 @@ impl ReplayController {
 }
 
 // ── Timestamp helpers ─────────────────────────────────────────────────────────
-
-pub fn parse_ts(s: &str) -> f64 {
-    chrono::DateTime::parse_from_rfc3339(s)
-        .map(|dt| dt.timestamp_millis() as f64 / 1000.0)
-        .unwrap_or(0.0)
-}
-
-fn format_ts_iso(unix: f64) -> String {
-    let secs  = unix as i64;
-    let nanos = ((unix - secs as f64) * 1e9) as u32;
-    chrono::DateTime::from_timestamp(secs, nanos)
-        .map(|dt: chrono::DateTime<chrono::Utc>| dt.to_rfc3339())
-        .unwrap_or_default()
-}
 
 fn format_ts_display(unix: f64) -> String {
     chrono::DateTime::from_timestamp(unix as i64, 0)

@@ -8,66 +8,113 @@
       "title": "Vehicle Velocity (kph)",
       "chart_type": "line",
       "signals": ["ws22_velocity.vehicle_velocity_kph", "ws22_velocity.motor_velocity_rpm"],
-      "grid": { "col": 0, "row": 0, "col_span": 2, "row_span": 1 }
+      "width": "wide"
     },
     {
-      "id": "motor_temp",
-      "title": "Motor Temp",
-      "chart_type": "gauge",
-      "signals": ["ws22_temp.motor_temp"],
-      "gauge": { "min": 0, "max": 120, "unit": "C" },
-      "grid": { "col": 2, "row": 0, "col_span": 1, "row_span": 1 }
+      "id": "vitals",
+      "title": "Vitals",
+      "chart_type": "meters",
+      "width": "small",
+      "fields": [
+        { "signal": "ws22_temp.motor_temp",    "label": "Motor Temp",    "min": 0, "max": 120, "unit": "C" },
+        { "signal": "ws22_temp.heatsink_temp", "label": "Heatsink Temp", "min": 0, "max": 100, "unit": "C" },
+        { "signal": "battery_stats_A.pack_soc", "label": "State of Charge", "min": 0, "max": 100, "unit": "%" }
+      ]
     },
     {
       "id": "pack_voltage",
       "title": "Pack Voltage & Current",
       "chart_type": "line",
       "signals": ["battery_stats_A.pack_voltage", "battery_stats_A.pack_current"],
-      "grid": { "col": 0, "row": 1, "col_span": 1, "row_span": 1 }
-    },
-    {
-      "id": "pack_soc",
-      "title": "State of Charge",
-      "chart_type": "gauge",
-      "signals": ["battery_stats_A.pack_soc"],
-      "gauge": { "min": 0, "max": 100, "unit": "%" },
-      "grid": { "col": 1, "row": 1, "col_span": 1, "row_span": 1 }
-    },
-    {
-      "id": "heatsink_temp",
-      "title": "Heatsink Temp",
-      "chart_type": "gauge",
-      "signals": ["ws22_temp.heatsink_temp"],
-      "gauge": { "min": 0, "max": 100, "unit": "C" },
-      "grid": { "col": 2, "row": 1, "col_span": 1, "row_span": 1 }
+      "width": "wide"
     },
     {
       "id": "pedals",
-      "title": "Pedal & Brake %",
-      "chart_type": "line",
-      "signals": ["drive_status.pedal_percentage", "drive_status.brake_percentage"],
-      "grid": { "col": 0, "row": 2, "col_span": 1, "row_span": 1 }
-    },
-    {
-      "id": "imu",
-      "title": "IMU (roll / pitch / yaw)",
-      "chart_type": "line",
-      "signals": ["imu_data.roll", "imu_data.pitch", "imu_data.yaw"],
-      "grid": { "col": 1, "row": 2, "col_span": 2, "row_span": 1 }
+      "title": "Pedals",
+      "chart_type": "pedals",
+      "signals": ["drive_status.pedal_percentage", "drive_status.brake_percentage", "drive_status.drive_state"],
+      "gauge": { "min": 0, "max": 100, "unit": "%" },
+      "width": "small"
     },
     {
       "id": "bus",
       "title": "Motor Bus (voltage cV / current cA)",
       "chart_type": "line",
       "signals": ["ws22_bus.bus_voltage_cv", "ws22_bus.bus_current_ca"],
-      "grid": { "col": 0, "row": 3, "col_span": 2, "row_span": 1 }
+      "width": "wide"
+    },
+    {
+      "id": "vehicle_status",
+      "title": "Vehicle Status",
+      "chart_type": "status",
+      "signals": ["drive_status.drive_state", "rear_controller_status.bps_fault"],
+      "width": "small"
+    },
+    {
+      "id": "imu",
+      "title": "IMU (roll / pitch / yaw)",
+      "chart_type": "line",
+      "signals": ["imu_data.roll", "imu_data.pitch", "imu_data.yaw"],
+      "width": "wide"
     },
     {
       "id": "cell_voltage",
       "title": "Cell Voltage (max / min)",
       "chart_type": "line",
       "signals": ["battery_stats_B.max_cell_voltage", "battery_stats_B.min_cell_voltage"],
-      "grid": { "col": 2, "row": 3, "col_span": 1, "row_span": 1 }
+      "width": "small"
+    },
+    {
+      "id": "accessory_currents",
+      "title": "Accessory Currents",
+      "chart_type": "meters",
+      "width": "medium",
+      "fields": [
+        { "signal": "fc_power_group_A.rev_cam_current",    "label": "Rev Cam",    "min": 0, "max": 10, "unit": "A" },
+        { "signal": "fc_power_group_A.telem_current",      "label": "Telemetry",  "min": 0, "max": 10, "unit": "A" },
+        { "signal": "fc_power_group_A.steering_current",   "label": "Steering",   "min": 0, "max": 10, "unit": "A" },
+        { "signal": "fc_power_group_A.driver_fan_current", "label": "Driver Fan", "min": 0, "max": 10, "unit": "A" },
+        { "signal": "fc_power_group_B.horn_current",       "label": "Horn",       "min": 0, "max": 10, "unit": "A" },
+        { "signal": "fc_power_group_B.spare_current",      "label": "Spare",      "min": 0, "max": 10, "unit": "A" }
+      ]
+    },
+    {
+      "id": "thermistors",
+      "title": "Thermistors",
+      "chart_type": "meters",
+      "width": "medium",
+      "fields": [
+        { "signal": "AFE_temperature.temperature_0", "label": "Thermistor 0", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_1", "label": "Thermistor 1", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_2", "label": "Thermistor 2", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_3", "label": "Thermistor 3", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_4", "label": "Thermistor 4", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_5", "label": "Thermistor 5", "min": 0, "max": 80, "unit": "C" },
+        { "signal": "AFE_temperature.temperature_6", "label": "Thermistor 6", "min": 0, "max": 80, "unit": "C" }
+      ]
+    },
+    {
+      "id": "discharge_bits",
+      "title": "Cell Discharge Bits",
+      "chart_type": "leds",
+      "width": "medium",
+      "signals": [
+        "AFE_discharge_bitset.cell_0", "AFE_discharge_bitset.cell_1",
+        "AFE_discharge_bitset.cell_2", "AFE_discharge_bitset.cell_3",
+        "AFE_discharge_bitset.cell_4", "AFE_discharge_bitset.cell_5",
+        "AFE_discharge_bitset.cell_6", "AFE_discharge_bitset.cell_7",
+        "AFE_discharge_bitset.cell_8", "AFE_discharge_bitset.cell_9",
+        "AFE_discharge_bitset.cell_10", "AFE_discharge_bitset.cell_11",
+        "AFE_discharge_bitset.cell_12", "AFE_discharge_bitset.cell_13",
+        "AFE_discharge_bitset.cell_14", "AFE_discharge_bitset.cell_15"
+      ]
+    },
+    {
+      "id": "velocity_stats",
+      "title": "Velocity (window stats)",
+      "chart_type": "stat",
+      "signals": ["ws22_velocity.vehicle_velocity_kph"],
+      "width": "medium"
     }
   ]
 }

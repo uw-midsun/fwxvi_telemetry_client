@@ -99,13 +99,30 @@ def flattened_signals(
             raise ValueError(f"Signal '{signal_name}' is missing required 'length'")
 
         length = int(signal_cfg["length"])
-        result.append(
-            {
-                "name": str(signal_name),
-                "start_bit": bit_cursor,
-                "length": length,
-            }
-        )
+        entry: dict[str, Any] = {
+            "name": str(signal_name),
+            "start_bit": bit_cursor,
+            "length": length,
+        }
+
+        # Float-scaled signals (firmware autogen "type: float"): a float in [min, max]
+        # quantized into the raw integer, with codes 0 and 2^length-1 reserved as
+        # under/overflow sentinels. Propagate the range so the decoder can invert it.
+        if signal_type == "float":
+            if "min" not in signal_cfg or "max" not in signal_cfg:
+                raise ValueError(
+                    f"Float signal '{signal_name}' must have 'min' and 'max' defined"
+                )
+            f_min, f_max = float(signal_cfg["min"]), float(signal_cfg["max"])
+            if f_min >= f_max:
+                raise ValueError(
+                    f"Float signal '{signal_name}': min must be less than max"
+                )
+            entry["type"] = "float"
+            entry["min"] = f_min
+            entry["max"] = f_max
+
+        result.append(entry)
         bit_cursor += length
 
     return result, bit_cursor
@@ -135,7 +152,18 @@ def resolve_dbc_name(board: str, raw_name: str, output_name: str) -> list[str]:
     return resolved
 
 
-def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, Any]]:
+def load_postprocess_rules(postprocess_path: Path) -> dict[str, Any]:
+    if not postprocess_path.exists():
+        return {}
+    data = yaml.safe_load(postprocess_path.read_text(encoding="utf-8")) or {}
+    return data.get("rules", {})
+
+
+def generate_global_messages(
+    cache_dir: Path,
+    dbc_path: Path,
+    postprocess_rules: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     dbc_message_ids = parse_dbc_message_ids(dbc_path)
 
     messages: list[dict[str, Any]] = []
@@ -180,6 +208,33 @@ def generate_global_messages(cache_dir: Path, dbc_path: Path) -> list[dict[str, 
 
             signals, total_bits = flattened_signals(message_cfg.get("signals", {}))
 
+            if postprocess_rules:
+                for sig in signals:
+                    key = f"{output_name}.{sig['name']}"
+                    rule = postprocess_rules.get(key, {})
+                    if "scale" in rule:
+                        sig["scale"] = float(rule["scale"])
+                    if "signed" in rule:
+                        sig["signed"] = bool(rule["signed"])
+                    if "enum" in rule:
+                        sig["enum"] = {str(k): str(v) for k, v in rule["enum"].items()}
+                    if "float" in rule:
+                        # Declare (or override) firmware float scaling for this signal.
+                        # Same quantization as autogen "type: float" in the board files.
+                        f_rule = rule["float"] or {}
+                        if "min" not in f_rule or "max" not in f_rule:
+                            raise ValueError(
+                                f"float rule for '{key}' must define 'min' and 'max'"
+                            )
+                        f_min, f_max = float(f_rule["min"]), float(f_rule["max"])
+                        if f_min >= f_max:
+                            raise ValueError(
+                                f"float rule for '{key}': min must be less than max"
+                            )
+                        sig["type"] = "float"
+                        sig["min"] = f_min
+                        sig["max"] = f_max
+
             messages.append(
                 {
                     "id": message_id,
@@ -219,6 +274,12 @@ def main() -> None:
         default=Path("can") / "global_can.yaml",
         help="Output path for generated global CAN YAML",
     )
+    parser.add_argument(
+        "--postprocess",
+        type=Path,
+        default=Path("can") / "postprocess.yaml",
+        help="Path to postprocessing rules YAML (never overwritten by fetcher)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
@@ -229,13 +290,17 @@ def main() -> None:
         args.dbc_path if args.dbc_path.is_absolute() else repo_root / args.dbc_path
     )
     output_path = args.output if args.output.is_absolute() else repo_root / args.output
+    postprocess_path = (
+        args.postprocess if args.postprocess.is_absolute() else repo_root / args.postprocess
+    )
 
     if not cache_dir.exists():
         raise FileNotFoundError(f"Cache directory not found: {cache_dir}")
     if not dbc_path.exists():
         raise FileNotFoundError(f"DBC file not found: {dbc_path}")
 
-    messages = generate_global_messages(cache_dir, dbc_path)
+    postprocess_rules = load_postprocess_rules(postprocess_path)
+    messages = generate_global_messages(cache_dir, dbc_path, postprocess_rules)
     payload = {"messages": messages}
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

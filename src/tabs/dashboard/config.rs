@@ -1,6 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Total horizontal units in one flow row. Each panel spans some of these units
+/// according to its `width`; panels wrap to the next row when the running total
+/// would exceed this. See `PanelWidth::span`.
+pub const ROW_UNITS: usize = 6;
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum ChartType {
@@ -8,6 +13,40 @@ pub enum ChartType {
     Gauge,
     Histogram,
     Scatter,
+    Numeric,
+    Bar,
+    Status,
+    Leds,
+    Bars,
+    Stat,
+    /// Generic label / value / bar table with an arbitrary number of rows.
+    Meters,
+    /// Combined throttle + brake pedal bars (brake tinted by regen state).
+    Pedals,
+}
+
+/// Relative width of a panel in the flowing layout. Panels no longer carry
+/// absolute grid coordinates — they flow in JSON order and wrap by width.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelWidth {
+    Small,
+    #[default]
+    Medium,
+    Wide,
+    Full,
+}
+
+impl PanelWidth {
+    /// How many of `ROW_UNITS` this panel occupies.
+    pub fn span(self) -> usize {
+        match self {
+            PanelWidth::Small  => 2,
+            PanelWidth::Medium => 3,
+            PanelWidth::Wide   => 4,
+            PanelWidth::Full   => ROW_UNITS,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -17,12 +56,20 @@ pub struct GaugeConfig {
     pub unit: String,
 }
 
+/// One row of a `Meters` panel: a signal plus its own display range and unit.
+/// `label` overrides the derived signal name; range fields fall back to the
+/// panel-level `gauge` config (then 0..100) when omitted.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct GridPos {
-    pub col:      usize,
-    pub row:      usize,
-    pub col_span: usize,
-    pub row_span: usize,
+pub struct FieldConfig {
+    pub signal: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label:  Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min:    Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max:    Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit:   Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -30,16 +77,29 @@ pub struct PanelConfig {
     pub id:         String,
     pub title:      String,
     pub chart_type: ChartType,
+    #[serde(default)]
     pub signals:    Vec<String>,  // "message_name.signal_name"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gauge:      Option<GaugeConfig>,
-    pub grid:       GridPos,
+    /// Per-row config for `Meters` panels (ignored by other chart types).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields:     Vec<FieldConfig>,
+    /// Relative width; panels flow in order and wrap by this. Defaults to medium.
+    #[serde(default)]
+    pub width:      PanelWidth,
 }
 
 impl PanelConfig {
     /// Split "message_name.signal_name" on the first dot.
     pub fn signal_parts(s: &str) -> Option<(&str, &str)> {
         s.find('.').map(|i| (&s[..i], &s[i + 1..]))
+    }
+
+    /// Signal keys referenced by this panel, whether declared via `signals`
+    /// or the richer `fields` list (Meters panels use the latter).
+    pub fn all_signals(&self) -> impl Iterator<Item = &str> {
+        self.signals.iter().map(String::as_str)
+            .chain(self.fields.iter().map(|f| f.signal.as_str()))
     }
 }
 
@@ -74,7 +134,6 @@ impl DashboardSetup {
         }
     }
 
-    #[allow(dead_code)]
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         std::fs::write(path, serde_json::to_string_pretty(self)?)?;
         Ok(())

@@ -1,0 +1,51 @@
+# Signal postprocessing rules.
+# Keyed by "message_name.signal_name" — must match names in global_can.yaml.
+# This file is never overwritten by the board-file fetcher.
+#
+# scale:  Multiply the raw integer by this factor; result stored as REAL in the database.
+# signed: Treat the raw bits as a two's-complement signed integer before applying scale.
+# enum:   Integer-to-label map used by the UI for display; raw integer is still stored in the DB.
+# float:  Firmware float scaling (autogen `type: float`): a float in [min, max] quantized
+#         into the signal's bits, with raw 0 = underflow and raw 2^length-1 = overflow
+#         sentinels (decoded as min-1 / max+1, exactly like the firmware getters).
+#         Signals declared `type: float` in the board yamls get this automatically via the
+#         fetcher + global_can_gen; only add a rule here to declare it for messages the
+#         board files don't cover (e.g. external hardware) or to override the range.
+#         Takes precedence over `scale`/`signed` when both are present.
+#
+#         some_message.some_signal:
+#           float:
+#             min: 0
+#             max: 200
+
+rules:
+  ws22_bus.bus_voltage_cv:
+    scale: 0.01
+  ws22_bus.bus_current_ca:
+    scale: 0.01
+    signed: true
+  ws22_velocity.motor_velocity_rpm:
+    scale: 0.1
+    signed: true
+  ws22_velocity.vehicle_velocity_kph:
+    scale: 0.01
+  ws22_temp.motor_temp:
+    scale: 0.1
+    signed: true
+  ws22_temp.heatsink_temp:
+    scale: 0.1
+    signed: true
+  ws22_drive_cmd.drive_current:
+    scale: 0.0001
+  ws22_drive_cmd.drive_velocity_rpm:
+    signed: true
+  drive_status.drive_state:
+    enum:
+      0: INVALID
+      1: NEUTRAL
+      2: DRIVE
+      3: REVERSE
+      4: CRUISE
+      5: BRAKE
+      6: REGEN
+      7: FAULT

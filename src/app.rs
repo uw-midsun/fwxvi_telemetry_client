@@ -1,8 +1,10 @@
 use crate::config::{db_path, AppConfig};
+use crate::decoder::can_config::{self, EnumLookup};
 use crate::decoder::DecoderCmd;
 use crate::replay::{ReplayController, SPEEDS};
 use crate::tabs::{
-    dashboard::DashboardTab, settings::SettingsTab, signal_table::SignalTableTab,
+    cells::CellsTab, dashboard::DashboardTab, fota::FotaTab, settings::SettingsTab,
+    signal_table::SignalTableTab,
 };
 use crossbeam_channel::Sender;
 use std::path::{Path, PathBuf};
@@ -12,6 +14,8 @@ use std::thread;
 enum Tab {
     SignalTable,
     Dashboard,
+    Cells,
+    Fota,
     Settings,
 }
 
@@ -22,6 +26,8 @@ pub struct TelemetryApp {
 
     signal_table:  SignalTableTab,
     dashboard:     DashboardTab,
+    cells_tab:     CellsTab,
+    fota:          FotaTab,
     settings_tab:  SettingsTab,
 
     active_tab:    Tab,
@@ -32,13 +38,23 @@ pub struct TelemetryApp {
 
     // Replay
     replay:        Option<ReplayController>,
+
+    enum_lookup:   EnumLookup,
+
+    dark_mode:     bool,
 }
 
 impl TelemetryApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let (cfg, settings_path) = AppConfig::load_or_default();
         let db_conn = crate::db::open(&db_path()).ok();
         let settings_tab = SettingsTab::new(&cfg);
+
+        let messages = can_config::load(&resolve_yaml(&cfg.can_yaml_path)).unwrap_or_default();
+        let enum_lookup = can_config::build_enum_lookup(&messages);
+
+        // Start in dark mode; the tab bar has a toggle to switch to light.
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
         Self {
             cfg: cfg.clone(),
@@ -46,11 +62,15 @@ impl TelemetryApp {
             db_conn,
             signal_table:  SignalTableTab::new(),
             dashboard:     DashboardTab::new(),
+            cells_tab:     CellsTab::new(),
+            fota:          FotaTab::new(&cfg.com_port),
             settings_tab,
             active_tab:    Tab::SignalTable,
             connected:     false,
             decoder_tx:    None,
             replay:        None,
+            enum_lookup,
+            dark_mode:     true,
         }
     }
 
@@ -75,7 +95,18 @@ impl TelemetryApp {
         let db   = db_path();
         let yaml = resolve_yaml(&self.cfg.can_yaml_path);
 
+        // Refresh enum lookup in case the YAML path changed since startup
+        if let Ok(messages) = can_config::load(&yaml) {
+            self.enum_lookup = can_config::build_enum_lookup(&messages);
+        }
+
         thread::spawn(move || crate::decoder::run(port, rx, db, yaml));
+
+        // Skip past any rows a previous session left in the DB, so the live table
+        // shows only data from this capture instead of replaying old samples.
+        if let Some(conn) = self.db_conn.as_ref() {
+            self.signal_table.reset_to_latest(conn);
+        }
 
         self.decoder_tx = Some(tx);
         self.connected  = true;
@@ -115,11 +146,16 @@ impl TelemetryApp {
 
 impl eframe::App for TelemetryApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Continuous repaint while live or replay is playing
-        let needs_repaint = self.connected
-            || self.replay.as_ref().map_or(false, |r| r.playing);
-        if needs_repaint {
+        // Schedule passive repaints at the cadence each surface actually needs, rather
+        // than a blanket 60fps. User input always triggers an immediate repaint on top of
+        // this, so interactivity is unaffected.
+        //   - Replay playback needs smooth ~60fps frames for the slider/table motion.
+        //   - The live signal table polls the DB every 250ms (see SignalTableTab).
+        //   - The dashboard schedules its own repaint at its data-refresh cadence.
+        if self.replay.as_ref().map_or(false, |r| r.playing) {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        } else if self.connected && self.active_tab == Tab::SignalTable {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
         }
 
         // Tick replay and refresh signal table if position changed
@@ -138,9 +174,24 @@ impl eframe::App for TelemetryApp {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.active_tab, Tab::SignalTable, "Signal Table");
                 ui.selectable_value(&mut self.active_tab, Tab::Dashboard,   "Dashboard");
+                ui.selectable_value(&mut self.active_tab, Tab::Cells,       "Cells");
+                ui.selectable_value(&mut self.active_tab, Tab::Fota,        "FOTA");
                 ui.selectable_value(&mut self.active_tab, Tab::Settings,    "Settings");
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Light / dark toggle. Icon shows the mode you'd switch TO.
+                    let icon = if self.dark_mode { "☀ Light" } else { "🌙 Dark" };
+                    if ui.button(icon).on_hover_text("Toggle light / dark theme").clicked() {
+                        self.dark_mode = !self.dark_mode;
+                        let visuals = if self.dark_mode {
+                            egui::Visuals::dark()
+                        } else {
+                            egui::Visuals::light()
+                        };
+                        ctx.set_visuals(visuals);
+                    }
+                    ui.separator();
+
                     // Replay indicator
                     if let Some(ref r) = self.replay {
                         let icon = if r.playing { "> Replay" } else { "|| Replay" };
@@ -172,15 +223,21 @@ impl eframe::App for TelemetryApp {
             match self.active_tab {
                 Tab::SignalTable => {
                     if self.replay.is_some() {
-                        self.signal_table.show_replay(ui);
+                        self.signal_table.show_replay(ui, &self.enum_lookup);
                     } else if let Some(ref conn) = self.db_conn {
-                        self.signal_table.show(ui, conn);
+                        self.signal_table.show(ui, conn, &self.enum_lookup);
                     } else {
                         ui.label("Database unavailable.");
                     }
                 }
                 Tab::Dashboard => {
-                    self.dashboard.show(ui, self.db_conn.as_ref());
+                    self.dashboard.show(ui, self.db_conn.as_ref(), &self.enum_lookup);
+                }
+                Tab::Cells => {
+                    self.cells_tab.show(ui, self.db_conn.as_ref());
+                }
+                Tab::Fota => {
+                    self.fota.show(ui, self.connected);
                 }
                 Tab::Settings => {
                     let mut cfg            = self.cfg.clone();
@@ -217,6 +274,7 @@ impl eframe::App for TelemetryApp {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.disconnect();
+        self.fota.shutdown();
     }
 }
 
