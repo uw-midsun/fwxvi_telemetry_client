@@ -1,4 +1,4 @@
-use crate::db::signal_store::{get_stats, query_since};
+use crate::db::signal_store::{get_stats, max_signal_id, query_since};
 use crate::decoder::can_config::EnumLookup;
 use crate::replay::SignalSnapshot;
 use egui_extras::{Column, TableBuilder};
@@ -42,6 +42,14 @@ impl SignalTableTab {
     pub fn clear(&mut self) {
         self.rows.clear();
         self.read_counts.clear();
+    }
+
+    /// Start a fresh live session: drop any rows/counts and fast-forward past
+    /// every row already in the DB, so a new capture never replays a previous
+    /// session's data left over in an old sqlite file.
+    pub fn reset_to_latest(&mut self, conn: &Connection) {
+        self.clear();
+        self.last_id = max_signal_id(conn).unwrap_or(self.last_id);
     }
 
     // ── Live path ─────────────────────────────────────────────────────────────

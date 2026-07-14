@@ -2,19 +2,21 @@ mod charts;
 mod config;
 
 pub use config::DashboardSetup;
-use config::PanelConfig;
+use config::{PanelConfig, ROW_UNITS};
 
 use crate::decoder::can_config::EnumLookup;
 use charts::{DataCache, RenderCache};
 use rusqlite::Connection;
-use std::collections::BTreeMap;
 
-const GRID_COLS:    usize = 3;
-const PANEL_HEIGHT: f32   = 280.0;
-const REFRESH_MS:   u128  = 500;
+const REFRESH_MS: u128 = 500;
+const ROW_GAP:    f32  = 8.0;
+
+// Accent for the drop-location outline shown while dragging a widget.
+const DROP_ACCENT: egui::Color32 = egui::Color32::from_rgb(96, 165, 250);
 
 pub struct DashboardTab {
     setup:            DashboardSetup,
+    setup_path:       std::path::PathBuf,
     // Time control UI state
     live:             bool,
     window_secs:      f64,
@@ -29,15 +31,15 @@ pub struct DashboardTab {
 
 impl DashboardTab {
     pub fn new() -> Self {
-        let setup = crate::config::exe_dir()
-            .join("default_setup.json")
-            .pipe_ref(|p| DashboardSetup::load(p).unwrap_or_default());
+        let setup_path = crate::config::exe_dir().join("default_setup.json");
+        let setup      = DashboardSetup::load(&setup_path).unwrap_or_default();
 
         let live         = setup.live;
         let window_secs  = setup.window_seconds;
 
         Self {
             setup,
+            setup_path,
             live,
             window_secs,
             manual_start:    String::new(),
@@ -132,9 +134,9 @@ impl DashboardTab {
         self.last_refresh    = std::time::Instant::now();
         self.window_start_ts = since_ms as f64 / 1000.0;
 
-        // Unique signals across all panels
+        // Unique signals across all panels (both `signals` and `fields`)
         let signal_keys: std::collections::HashSet<String> = self.setup.panels.iter()
-            .flat_map(|p| p.signals.iter().cloned())
+            .flat_map(|p| p.all_signals().map(str::to_string))
             .collect();
 
         let mut new_cache = DataCache::new();
@@ -177,7 +179,7 @@ impl DashboardTab {
 
     // ── Panel grid ────────────────────────────────────────────────────────────
 
-    fn draw_panels(&self, ui: &mut egui::Ui) {
+    fn draw_panels(&mut self, ui: &mut egui::Ui) {
         if self.setup.panels.is_empty() {
             ui.centered_and_justified(|ui| {
                 ui.weak("No panels configured. Panels can be added in a future release.");
@@ -185,38 +187,117 @@ impl DashboardTab {
             return;
         }
 
-        // Group panel indices by row
-        let mut rows: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        // Pack panels into rows purely by their declared order: keep adding to the
+        // current row until the next panel's width would overflow ROW_UNITS, then
+        // wrap. No coordinates — position falls out of the panel ordering.
+        let mut rows: Vec<Vec<usize>> = Vec::new();
+        let mut used = 0usize;
         for (i, p) in self.setup.panels.iter().enumerate() {
-            rows.entry(p.grid.row).or_default().push(i);
+            let span = p.width.span().min(ROW_UNITS);
+            if rows.is_empty() || used + span > ROW_UNITS {
+                rows.push(Vec::new());
+                used = 0;
+            }
+            rows.last_mut().unwrap().push(i);
+            used += span;
         }
 
+        // A completed drag → (dragged panel index, panel index dropped onto).
+        let mut reorder: Option<(usize, usize)> = None;
+        let render = &self.render;
+        let panels = &self.setup.panels;
+
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for indices in rows.values() {
-                let mut sorted = indices.clone();
-                sorted.sort_by_key(|&i| self.setup.panels[i].grid.col);
-
+            for indices in &rows {
                 let total_w = ui.available_width();
+                // Sum of spans actually present in this row, so a partly-filled
+                // final row still stretches its panels across the width.
+                let row_units: usize = indices.iter()
+                    .map(|&i| panels[i].width.span().min(ROW_UNITS))
+                    .sum::<usize>()
+                    .max(1);
 
-                ui.horizontal(|ui| {
-                    for &idx in &sorted {
-                        let panel    = &self.setup.panels[idx];
-                        let col_span = panel.grid.col_span.clamp(1, GRID_COLS);
-                        let w        = (total_w * col_span as f32 / GRID_COLS as f32 - 6.0)
-                                       .max(80.0);
+                // Subtle boundary drawn around every widget; brighter accent when a
+                // drag is hovering this panel to show where the dragged one will land.
+                let border_col = if ui.visuals().dark_mode {
+                    egui::Color32::from_gray(70)
+                } else {
+                    egui::Color32::from_gray(190)
+                };
+                let rounding = egui::Rounding::same(6.0);
 
-                        ui.allocate_ui(egui::vec2(w, PANEL_HEIGHT + 28.0), |ui| {
-                            ui.vertical(|ui| {
-                                ui.strong(&panel.title);
-                                charts::draw_panel(ui, panel, &self.render, PANEL_HEIGHT);
-                            });
+                ui.horizontal_top(|ui| {
+                    for &idx in indices {
+                        let panel = &panels[idx];
+                        let span  = panel.width.span().min(ROW_UNITS);
+                        let w     = (total_w * span as f32 / row_units as f32 - ROW_GAP)
+                                    .max(80.0);
+                        let body  = charts::panel_height(panel);
+
+                        // Each panel is a drag source (grab its header to move it) and
+                        // a drop target, so panels can be rearranged relative to each
+                        // other. The payload is the panel's index.
+                        let dnd_id = egui::Id::new(("dash_panel", idx));
+                        let alloc = ui.allocate_ui(egui::vec2(w, body + 30.0), |ui| {
+                            egui::Frame::none()
+                                .stroke(egui::Stroke::new(1.0, border_col))
+                                .rounding(rounding)
+                                .inner_margin(egui::Margin::same(6.0))
+                                .show(ui, |ui| {
+                                    ui.dnd_drag_source(dnd_id, idx, |ui| {
+                                        ui.vertical(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(&panel.title).size(17.0).strong(),
+                                            );
+                                            charts::draw_panel(ui, panel, render, body);
+                                        });
+                                    })
+                                    .response
+                                })
+                                .inner
                         });
+                        let panel_rect = alloc.response.rect;
+                        let resp       = alloc.inner;
+
+                        // Drop-target highlight: while a *different* panel is dragged
+                        // over this one, outline it to preview the landing spot.
+                        let hovered = resp.dnd_hover_payload::<usize>()
+                            .map_or(false, |src| *src != idx);
+                        if hovered {
+                            ui.painter().rect_stroke(
+                                panel_rect,
+                                rounding,
+                                egui::Stroke::new(2.5, DROP_ACCENT),
+                            );
+                        }
+
+                        if let Some(src) = resp.dnd_release_payload::<usize>() {
+                            reorder = Some((*src, idx));
+                        }
                     }
                 });
 
-                ui.add_space(6.0);
+                ui.add_space(ROW_GAP);
             }
         });
+
+        if let Some((from, to)) = reorder {
+            if from != to && from < self.setup.panels.len() {
+                let panel = self.setup.panels.remove(from);
+                // Removing shifts indices after `from` down by one.
+                let dest = if from < to { to - 1 } else { to };
+                let dest = dest.min(self.setup.panels.len());
+                self.setup.panels.insert(dest, panel);
+                self.persist();
+            }
+        }
+    }
+
+    /// Save the current setup (e.g. after a drag reorder) back to the file it
+    /// was loaded from, so the arrangement survives a restart. Errors are
+    /// swallowed — a failed save shouldn't disrupt the live UI.
+    fn persist(&self) {
+        let _ = self.setup.save(&self.setup_path);
     }
 }
 
@@ -226,9 +307,3 @@ fn parse_rfc3339_ms(s: &str) -> Option<i64> {
         .ok()
         .map(|dt| dt.timestamp_millis())
 }
-
-// Simple pipe helper to avoid a temp variable when chaining method calls on a value
-trait PipeRef: Sized {
-    fn pipe_ref<F, R>(&self, f: F) -> R where F: FnOnce(&Self) -> R { f(self) }
-}
-impl<T> PipeRef for T {}

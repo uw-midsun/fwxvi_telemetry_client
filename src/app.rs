@@ -40,16 +40,21 @@ pub struct TelemetryApp {
     replay:        Option<ReplayController>,
 
     enum_lookup:   EnumLookup,
+
+    dark_mode:     bool,
 }
 
 impl TelemetryApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let (cfg, settings_path) = AppConfig::load_or_default();
         let db_conn = crate::db::open(&db_path()).ok();
         let settings_tab = SettingsTab::new(&cfg);
 
         let messages = can_config::load(&resolve_yaml(&cfg.can_yaml_path)).unwrap_or_default();
         let enum_lookup = can_config::build_enum_lookup(&messages);
+
+        // Start in dark mode; the tab bar has a toggle to switch to light.
+        cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
         Self {
             cfg: cfg.clone(),
@@ -65,6 +70,7 @@ impl TelemetryApp {
             decoder_tx:    None,
             replay:        None,
             enum_lookup,
+            dark_mode:     true,
         }
     }
 
@@ -95,6 +101,12 @@ impl TelemetryApp {
         }
 
         thread::spawn(move || crate::decoder::run(port, rx, db, yaml));
+
+        // Skip past any rows a previous session left in the DB, so the live table
+        // shows only data from this capture instead of replaying old samples.
+        if let Some(conn) = self.db_conn.as_ref() {
+            self.signal_table.reset_to_latest(conn);
+        }
 
         self.decoder_tx = Some(tx);
         self.connected  = true;
@@ -167,6 +179,19 @@ impl eframe::App for TelemetryApp {
                 ui.selectable_value(&mut self.active_tab, Tab::Settings,    "Settings");
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    // Light / dark toggle. Icon shows the mode you'd switch TO.
+                    let icon = if self.dark_mode { "☀ Light" } else { "🌙 Dark" };
+                    if ui.button(icon).on_hover_text("Toggle light / dark theme").clicked() {
+                        self.dark_mode = !self.dark_mode;
+                        let visuals = if self.dark_mode {
+                            egui::Visuals::dark()
+                        } else {
+                            egui::Visuals::light()
+                        };
+                        ctx.set_visuals(visuals);
+                    }
+                    ui.separator();
+
                     // Replay indicator
                     if let Some(ref r) = self.replay {
                         let icon = if r.playing { "> Replay" } else { "|| Replay" };

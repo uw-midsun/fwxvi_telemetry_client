@@ -36,6 +36,15 @@ pub fn insert_signal(conn: &Connection, s: &SignalSample) -> Result<()> {
     Ok(())
 }
 
+/// Highest row id currently in the table, or 0 when empty. Used to skip past a
+/// previous session's rows when a new live capture starts, so the signal table
+/// doesn't "replay" stale data it inherited from an old sqlite file.
+pub fn max_signal_id(conn: &Connection) -> Result<i64> {
+    let mut stmt = conn.prepare_cached("SELECT COALESCE(MAX(id), 0) FROM signal_samples")?;
+    let id = stmt.query_row([], |r| r.get::<_, i64>(0))?;
+    Ok(id)
+}
+
 /// Fetch rows newer than `after_id`, up to `limit`.
 pub fn query_since(conn: &Connection, after_id: i64, limit: usize) -> Result<Vec<SignalRow>> {
     let mut stmt = conn.prepare_cached(

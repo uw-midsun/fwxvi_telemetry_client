@@ -2,13 +2,18 @@ use crate::decoder::can_config::EnumLookup;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints, Points};
 use std::collections::{BTreeMap, HashMap};
 
-use super::config::{ChartType, PanelConfig};
+use super::config::{ChartType, FieldConfig, PanelConfig};
 
 pub type DataCache = HashMap<String, Vec<[f64; 2]>>;  // key: "msg.sig", val: [secs_offset, value]
 
 // Decimation / binning targets. Chosen once at refresh cadence, not per frame.
 const LINE_TARGET:    usize = 2000; // ~worst-case horizontal pixels; independent of window
 const SCATTER_TARGET: usize = 4000;
+
+// Solid accent used for all meter/pedal fills (per the "solid accent" style).
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(96, 165, 250);
+const REGEN_ON:  egui::Color32 = egui::Color32::from_rgb(90, 200, 90);   // green: regenerating
+const REGEN_OFF: egui::Color32 = egui::Color32::from_rgb(232, 200, 72);  // yellow: regen off
 
 // ── Render cache ──────────────────────────────────────────────────────────────
 
@@ -29,9 +34,10 @@ pub struct RenderCache {
     lines:   HashMap<String, Vec<[f64; 2]>>,   // decimated time series, key "msg.sig"
     hists:   HashMap<String, Vec<(f64, f64)>>, // (bin_center, count), key "msg.sig"
     scatter: HashMap<String, Vec<[f64; 2]>>,   // paired (x_val, y_val), key panel.id
-    latest:  HashMap<String, f64>,             // latest value per signal, for gauges
+    latest:  HashMap<String, f64>,             // latest value per signal
     labels:  HashMap<String, String>,          // enum label of latest value (status panels)
     stats:   HashMap<String, SigStats>,        // window aggregates (stat tiles)
+    regen:   HashMap<String, bool>,            // pedal panel id → regenerating?
 }
 
 impl RenderCache {
@@ -42,6 +48,10 @@ impl RenderCache {
             match panel.chart_type {
                 ChartType::Line => {
                     for key in &panel.signals {
+                        // Latest value feeds the readout box beside the plot.
+                        if let Some(v) = raw.get(key).and_then(|p| p.last()).map(|p| p[1]) {
+                            rc.latest.insert(key.clone(), v);
+                        }
                         if rc.lines.contains_key(key) { continue; }
                         if let Some(pts) = raw.get(key) {
                             rc.lines.insert(key.clone(), decimate_minmax(pts, LINE_TARGET));
@@ -70,6 +80,44 @@ impl RenderCache {
                             rc.latest.insert(key.clone(), v);
                         }
                     }
+                }
+                ChartType::Meters => {
+                    // Latest value of every field signal; ranges live in the config.
+                    for f in &panel.fields {
+                        if let Some(v) = raw.get(&f.signal).and_then(|p| p.last()).map(|p| p[1]) {
+                            rc.latest.insert(f.signal.clone(), v);
+                        }
+                    }
+                    // Also allow bare `signals` (uses panel gauge range) for convenience.
+                    for key in &panel.signals {
+                        if let Some(v) = raw.get(key).and_then(|p| p.last()).map(|p| p[1]) {
+                            rc.latest.insert(key.clone(), v);
+                        }
+                    }
+                }
+                ChartType::Pedals => {
+                    for key in &panel.signals {
+                        if let Some(v) = raw.get(key).and_then(|p| p.last()).map(|p| p[1]) {
+                            rc.latest.insert(key.clone(), v);
+                        }
+                    }
+                    // Regen state from the (optional) 3rd signal: drive_state.
+                    // Prefer the enum label == REGEN; fall back to the raw value 6.
+                    let regen = panel.signals.get(2).map(|key| {
+                        match raw.get(key).and_then(|p| p.last()).map(|p| p[1]) {
+                            Some(v) => {
+                                let label = PanelConfig::signal_parts(key)
+                                    .and_then(|(m, s)| enum_lookup.get(&(m.to_string(), s.to_string())))
+                                    .and_then(|map| map.get(&(v as i64).to_string()));
+                                match label {
+                                    Some(l) => l.eq_ignore_ascii_case("regen"),
+                                    None    => v as i64 == 6,
+                                }
+                            }
+                            None => false,
+                        }
+                    }).unwrap_or(false);
+                    rc.regen.insert(panel.id.clone(), regen);
                 }
                 ChartType::Status => {
                     // Latest value per signal plus its enum label (if the CAN config
@@ -178,44 +226,127 @@ fn bin_histogram(pts: &[[f64; 2]]) -> Vec<(f64, f64)> {
     bins.into_iter().map(|(x, c)| (x as f64, c as f64)).collect()
 }
 
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+/// Natural body height for a panel, so table-style widgets grow with their row
+/// count while plots keep a fixed comfortable height.
+pub fn panel_height(panel: &PanelConfig) -> f32 {
+    match panel.chart_type {
+        ChartType::Line | ChartType::Scatter | ChartType::Histogram | ChartType::Bars => 240.0,
+        ChartType::Gauge => 200.0,
+        ChartType::Leds  => 200.0,
+        ChartType::Pedals => 210.0,
+        ChartType::Bar    => 120.0,
+        ChartType::Numeric => {
+            let n = panel.signals.len().max(1) as f32;
+            (n * 74.0).clamp(120.0, 340.0)
+        }
+        ChartType::Stat => {
+            let n = panel.signals.len().max(1) as f32;
+            (n * 92.0).clamp(120.0, 360.0)
+        }
+        ChartType::Status => {
+            let n = panel.signals.len().max(1) as f32;
+            (n * 30.0 + 14.0).clamp(56.0, 360.0)
+        }
+        ChartType::Meters => {
+            let n = meter_row_count(panel).max(1) as f32;
+            (n * 28.0 + 10.0).clamp(56.0, 460.0)
+        }
+    }
+}
+
+fn meter_row_count(panel: &PanelConfig) -> usize {
+    if !panel.fields.is_empty() { panel.fields.len() } else { panel.signals.len() }
+}
+
 // ── Public entry point ────────────────────────────────────────────────────────
 
 pub fn draw_panel(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height: f32) {
-    egui::Frame::dark_canvas(ui.style())
-        .show(ui, |ui| {
-            ui.set_min_height(height);
-            match panel.chart_type {
-                ChartType::Line      => draw_line(ui, panel, render, height),
-                ChartType::Gauge     => draw_gauge(ui, panel, render, height),
-                ChartType::Histogram => draw_histogram(ui, panel, render, height),
-                ChartType::Scatter   => draw_scatter(ui, panel, render, height),
-                ChartType::Numeric   => draw_numeric(ui, panel, render, height),
-                ChartType::Bar       => draw_bar(ui, panel, render, height),
-                ChartType::Status    => draw_status(ui, panel, render, height),
-                ChartType::Leds      => draw_leds(ui, panel, render, height),
-                ChartType::Bars      => draw_bars(ui, panel, render, height),
-                ChartType::Stat      => draw_stat(ui, panel, render, height),
-            }
-        });
+    // Table-style widgets read best inside a soft rounded card; plots stay
+    // frameless so nothing draws that harsh dark box around them.
+    let card = matches!(
+        panel.chart_type,
+        ChartType::Meters | ChartType::Pedals | ChartType::Status
+            | ChartType::Numeric | ChartType::Stat | ChartType::Leds
+    );
+    let frame = if card {
+        egui::Frame::none()
+            .fill(ui.visuals().faint_bg_color)
+            .rounding(egui::Rounding::same(6.0))
+            .inner_margin(egui::Margin::same(8.0))
+    } else {
+        egui::Frame::none()
+    };
+
+    frame.show(ui, |ui| {
+        ui.set_min_height(height);
+        match panel.chart_type {
+            ChartType::Line      => draw_line(ui, panel, render, height),
+            ChartType::Gauge     => draw_gauge(ui, panel, render, height),
+            ChartType::Histogram => draw_histogram(ui, panel, render, height),
+            ChartType::Scatter   => draw_scatter(ui, panel, render, height),
+            ChartType::Numeric   => draw_numeric(ui, panel, render, height),
+            ChartType::Bar       => draw_bar(ui, panel, render, height),
+            ChartType::Status    => draw_status(ui, panel, render, height),
+            ChartType::Leds      => draw_leds(ui, panel, render, height),
+            ChartType::Bars      => draw_bars(ui, panel, render, height),
+            ChartType::Stat      => draw_stat(ui, panel, render, height),
+            ChartType::Meters    => draw_meters(ui, panel, render, height),
+            ChartType::Pedals    => draw_pedals(ui, panel, render, height),
+        }
+    });
 }
 
 // ── Line chart ────────────────────────────────────────────────────────────────
 
+/// Fixed (non-interactive) line plot that auto-fits its bounds to the data as
+/// new points arrive, with a compact live-value readout pinned to its right.
 fn draw_line(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height: f32) {
-    Plot::new(&panel.id)
-        .height(height)
-        .x_axis_label("s")
-        .legend(egui_plot::Legend::default())
-        .show(ui, |plot_ui| {
-            for sig_key in &panel.signals {
-                if let Some(pts) = render.lines.get(sig_key) {
-                    // pts is already decimated (<= ~LINE_TARGET), so this clone is cheap.
-                    let pp = PlotPoints::new(pts.clone());
-                    let label = sig_key.rsplit('.').next().unwrap_or(sig_key);
-                    plot_ui.line(Line::new(pp).name(label));
+    let readout_w = 104.0_f32;
+    let gap       = 8.0_f32;
+
+    ui.horizontal_top(|ui| {
+        let plot_w = (ui.available_width() - readout_w - gap).max(120.0);
+
+        Plot::new(&panel.id)
+            .width(plot_w)
+            .height(height)
+            .show_background(false)          // no dark canvas box
+            .allow_drag(false)               // fixed: can't pan…
+            .allow_zoom(false)               // …or zoom…
+            .allow_scroll(false)             // …or scroll…
+            .allow_boxed_zoom(false)
+            .auto_bounds([true, true].into()) // …but always fits the current data
+            .legend(egui_plot::Legend::default())
+            .show(ui, |plot_ui| {
+                for sig_key in &panel.signals {
+                    if let Some(pts) = render.lines.get(sig_key) {
+                        // pts is already decimated (<= ~LINE_TARGET), so this clone is cheap.
+                        let pp = PlotPoints::new(pts.clone());
+                        let label = sig_key.rsplit('.').next().unwrap_or(sig_key);
+                        plot_ui.line(Line::new(pp).name(label));
+                    }
                 }
-            }
-        });
+            });
+
+        // Live-value readout: current value of every signal in the plot.
+        ui.allocate_ui_with_layout(
+            egui::vec2(readout_w, height),
+            egui::Layout::top_down(egui::Align::Min),
+            |ui| {
+                ui.add_space(4.0);
+                for sig_key in &panel.signals {
+                    let name = sig_key.rsplit('.').next().unwrap_or(sig_key);
+                    let text = render.latest.get(sig_key).map(|&v| format_number(v))
+                        .unwrap_or_else(|| "—".to_string());
+                    ui.label(egui::RichText::new(name).size(11.0).weak());
+                    ui.label(egui::RichText::new(text).size(19.0).strong());
+                    ui.add_space(8.0);
+                }
+            },
+        );
+    });
 }
 
 // ── Gauge ─────────────────────────────────────────────────────────────────────
@@ -266,7 +397,7 @@ fn draw_gauge(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, heig
         egui::Align2::CENTER_CENTER,
         format!("{:.0}{}", latest, if unit.is_empty() { "".into() } else { format!(" {unit}") }),
         egui::FontId::proportional((radius * 0.34).max(12.0)),
-        egui::Color32::WHITE,
+        ui.visuals().text_color(),
     );
 
     // Min / max labels at arc endpoints
@@ -420,58 +551,252 @@ fn draw_bar(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height
     );
 }
 
-// ── Status indicator ──────────────────────────────────────────────────────────
+// ── Meters: generic label | value | bar table ──────────────────────────────────
 
-/// One row per signal: colored state dot + enum label (or value) + signal name.
-/// Color heuristic: enum labels containing FAULT/ERR/INVALID are red; without an
-/// enum, nonzero is treated as a fault (fault-code convention) and zero as OK.
-fn draw_status(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height: f32) {
-    const RED:   egui::Color32 = egui::Color32::from_rgb(220, 90, 90);
-    const GREEN: egui::Color32 = egui::Color32::from_rgb(90, 200, 90);
+/// One resolved meter row: display label, latest value, its range and unit.
+struct MeterRow<'a> {
+    label: &'a str,
+    key:   &'a str,
+    min:   f64,
+    max:   f64,
+    unit:  &'a str,
+}
 
-    let n = panel.signals.len().max(1);
-    let row_size   = (height / n as f32 * 0.34).clamp(14.0, 32.0);
-    let gap        = row_size * 0.5;
+/// Resolve the rows for a Meters panel: prefer the rich `fields` list, else
+/// fall back to `signals` using the panel-level gauge range.
+fn meter_rows<'a>(panel: &'a PanelConfig) -> Vec<MeterRow<'a>> {
+    let (gmin, gmax, gunit) = panel.gauge.as_ref()
+        .map(|g| (g.min, g.max, g.unit.as_str()))
+        .unwrap_or((0.0, 100.0, ""));
 
-    ui.allocate_ui_with_layout(
+    if !panel.fields.is_empty() {
+        panel.fields.iter().map(|f: &FieldConfig| MeterRow {
+            label: f.label.as_deref()
+                .unwrap_or_else(|| f.signal.rsplit('.').next().unwrap_or(&f.signal)),
+            key:   &f.signal,
+            min:   f.min.unwrap_or(gmin),
+            max:   f.max.unwrap_or(gmax),
+            unit:  f.unit.as_deref().unwrap_or(gunit),
+        }).collect()
+    } else {
+        panel.signals.iter().map(|s| MeterRow {
+            label: s.rsplit('.').next().unwrap_or(s),
+            key:   s,
+            min:   gmin,
+            max:   gmax,
+            unit:  gunit,
+        }).collect()
+    }
+}
+
+/// Generic table: each row is `label | value | bar`. Bar is a solid accent fill
+/// clamped to the row's range; the text always shows the true value.
+fn draw_meters(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height: f32) {
+    let rows = meter_rows(panel);
+    let n    = rows.len().max(1);
+    let row_h = (height / n as f32).clamp(20.0, 40.0);
+
+    let text_col  = ui.visuals().text_color();
+    let track_col = if ui.visuals().dark_mode {
+        egui::Color32::from_gray(60)
+    } else {
+        egui::Color32::from_gray(205)
+    };
+
+    for row in &rows {
+        let (resp, painter) = ui.allocate_painter(
+            egui::vec2(ui.available_width(), row_h),
+            egui::Sense::hover(),
+        );
+        let rect = resp.rect;
+
+        // Columns: label (left) | value (mid) | bar (right, fixed-ish width).
+        let bar_w  = (rect.width() * 0.40).clamp(50.0, 200.0);
+        let colgap = 8.0_f32;
+
+        let bar_area = egui::Rect::from_min_max(
+            egui::pos2(rect.right() - bar_w, rect.top()),
+            rect.max,
+        );
+        let val_right = bar_area.left() - colgap;
+
+        let font       = egui::FontId::proportional((row_h * 0.42).clamp(11.0, 15.0));
+        let value_font = egui::FontId::proportional((row_h * 0.46).clamp(11.0, 16.0));
+
+        // Label (left, vertically centered)
+        painter.text(
+            egui::pos2(rect.left(), rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            row.label,
+            font.clone(),
+            text_col,
+        );
+
+        // Value text (right-aligned before the bar); shows the true value.
+        let value = render.latest.get(row.key).copied();
+        let value_text = match value {
+            Some(v) => if row.unit.is_empty() {
+                format_number(v)
+            } else {
+                format!("{} {}", format_number(v), row.unit)
+            },
+            None => "—".to_string(),
+        };
+        painter.text(
+            egui::pos2(val_right, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            value_text,
+            value_font,
+            text_col,
+        );
+
+        // Bar track + solid-accent fill, clamped to [min, max].
+        let bar_h    = (row_h * 0.42).clamp(8.0, 16.0);
+        let track    = egui::Rect::from_center_size(
+            egui::pos2(bar_area.center().x, rect.center().y),
+            egui::vec2(bar_w, bar_h),
+        );
+        let rounding = egui::Rounding::same(bar_h * 0.5);
+        painter.rect_filled(track, rounding, track_col);
+
+        if let Some(v) = value {
+            let span = row.max - row.min;
+            let t = if span.abs() < f64::EPSILON {
+                0.0
+            } else {
+                ((v - row.min) / span).clamp(0.0, 1.0) as f32
+            };
+            if t > 0.0 {
+                let fill = egui::Rect::from_min_max(
+                    track.min,
+                    egui::pos2(track.left() + track.width() * t, track.bottom()),
+                );
+                painter.rect_filled(fill, rounding, ACCENT);
+            }
+        }
+    }
+}
+
+// ── Pedals: throttle + brake ────────────────────────────────────────────────────
+
+/// Two vertical fill bars — throttle and brake — in one widget. The brake bar
+/// is tinted green while regenerating (drive_state == REGEN) and yellow when
+/// regen is off. Convention: signals = [throttle, brake, (optional) drive_state].
+fn draw_pedals(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, height: f32) {
+    let throttle = panel.signals.first().and_then(|k| render.latest.get(k)).copied().unwrap_or(0.0);
+    let brake    = panel.signals.get(1).and_then(|k| render.latest.get(k)).copied().unwrap_or(0.0);
+    let regen    = render.regen.get(&panel.id).copied().unwrap_or(false);
+
+    let min = panel.gauge.as_ref().map(|g| g.min).unwrap_or(0.0);
+    let max = panel.gauge.as_ref().map(|g| g.max).unwrap_or(100.0);
+
+    let text_col  = ui.visuals().text_color();
+    let track_col = if ui.visuals().dark_mode {
+        egui::Color32::from_gray(60)
+    } else {
+        egui::Color32::from_gray(205)
+    };
+
+    let (resp, painter) = ui.allocate_painter(
         egui::vec2(ui.available_width(), height),
-        egui::Layout::top_down(egui::Align::Center),
-        |ui| {
-            let content_h = (row_size + gap) * n as f32;
-            ui.add_space(((height - content_h) * 0.5).max(4.0));
+        egui::Sense::hover(),
+    );
+    let rect = resp.rect;
 
+    let brake_col = if regen { REGEN_ON } else { REGEN_OFF };
+    let cols: [(&str, f64, egui::Color32); 2] = [
+        ("Throttle", throttle, ACCENT),
+        ("Brake",    brake,    brake_col),
+    ];
+
+    let label_h = 18.0_f32;
+    let value_h = 18.0_f32;
+    let track_top    = rect.top() + value_h + 4.0;
+    let track_bottom = rect.bottom() - label_h;
+    let track_h      = (track_bottom - track_top).max(20.0);
+
+    let slot_w = rect.width() / cols.len() as f32;
+    let bar_w  = slot_w.min(64.0).max(24.0);
+
+    for (i, (name, value, color)) in cols.iter().enumerate() {
+        let cx = rect.left() + slot_w * (i as f32 + 0.5);
+
+        let track = egui::Rect::from_min_max(
+            egui::pos2(cx - bar_w / 2.0, track_top),
+            egui::pos2(cx + bar_w / 2.0, track_bottom),
+        );
+        let rounding = egui::Rounding::same(6.0);
+        painter.rect_filled(track, rounding, track_col);
+
+        let span = max - min;
+        let t = if span.abs() < f64::EPSILON {
+            0.0
+        } else {
+            ((value - min) / span).clamp(0.0, 1.0) as f32
+        };
+        if t > 0.0 {
+            let fill = egui::Rect::from_min_max(
+                egui::pos2(track.left(), track.bottom() - track_h * t),
+                track.max,
+            );
+            painter.rect_filled(fill, rounding, *color);
+        }
+
+        // Value above the bar
+        painter.text(
+            egui::pos2(cx, rect.top() + value_h * 0.5),
+            egui::Align2::CENTER_CENTER,
+            format!("{}%", format_number(*value)),
+            egui::FontId::proportional(14.0),
+            text_col,
+        );
+        // Name below the bar
+        painter.text(
+            egui::pos2(cx, track_bottom + label_h * 0.5),
+            egui::Align2::CENTER_CENTER,
+            *name,
+            egui::FontId::proportional(12.0),
+            text_col,
+        );
+    }
+}
+
+// ── Status: text table ──────────────────────────────────────────────────────────
+
+/// One `field  →  value` row per signal in an aligned two-column table. Uses the
+/// enum label (e.g. drive_state → "DRIVE") when the CAN config defines one,
+/// otherwise the numeric value.
+fn draw_status(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, _height: f32) {
+    egui::Grid::new(&panel.id)
+        .num_columns(2)
+        .spacing(egui::vec2(18.0, 8.0))
+        .striped(true)
+        .show(ui, |ui| {
             for sig_key in &panel.signals {
-                let name = sig_key.rsplit('.').next().unwrap_or(sig_key);
-                let value = render.latest.get(sig_key).copied();
-                let label = render.labels.get(sig_key).cloned()
-                    .or_else(|| value.map(format_number))
+                let name = pretty_name(sig_key.rsplit('.').next().unwrap_or(sig_key));
+                let value = render.labels.get(sig_key).cloned()
+                    .or_else(|| render.latest.get(sig_key).map(|&v| format_number(v)))
                     .unwrap_or_else(|| "—".to_string());
 
-                let color = match value {
-                    None => egui::Color32::GRAY,
-                    Some(v) => {
-                        let bad = match render.labels.get(sig_key) {
-                            Some(l) => {
-                                let u = l.to_uppercase();
-                                u.contains("FAULT") || u.contains("ERR") || u.contains("INVALID")
-                            }
-                            None => v != 0.0,
-                        };
-                        if bad { RED } else { GREEN }
-                    }
-                };
-
-                ui.horizontal(|ui| {
-                    // Center the row roughly by padding to the panel midpoint.
-                    ui.add_space((ui.available_width() * 0.12).max(8.0));
-                    ui.label(egui::RichText::new("●").size(row_size).color(color));
-                    ui.label(egui::RichText::new(label).size(row_size * 0.85).strong());
-                    ui.label(egui::RichText::new(name).size((row_size * 0.5).max(10.0)).weak());
-                });
-                ui.add_space(gap);
+                ui.label(egui::RichText::new(name).weak());
+                ui.label(egui::RichText::new(value).strong());
+                ui.end_row();
             }
-        },
-    );
+        });
+}
+
+/// Turn a snake_case signal name into a spaced Title Case label.
+fn pretty_name(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for (i, word) in s.split('_').enumerate() {
+        if i > 0 { out.push(' '); }
+        let mut chars = word.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
 }
 
 // ── LED grid ──────────────────────────────────────────────────────────────────
@@ -693,5 +1018,12 @@ mod tests {
         let bins = bin_histogram(&pts);
         // 1.2 & 1.8 -> bin 1 (count 2), 2.4 -> bin 2 (count 1), 5.0 -> bin 5 (count 1)
         assert_eq!(bins, vec![(1.0, 2.0), (2.0, 1.0), (5.0, 1.0)]);
+    }
+
+    #[test]
+    fn pretty_name_titlecases_snake_case() {
+        assert_eq!(pretty_name("drive_state"), "Drive State");
+        assert_eq!(pretty_name("bps_fault"), "Bps Fault");
+        assert_eq!(pretty_name("soc"), "Soc");
     }
 }
