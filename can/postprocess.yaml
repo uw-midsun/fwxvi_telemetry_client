@@ -5,6 +5,14 @@
 # scale:  Multiply the raw integer by this factor; result stored as REAL in the database.
 # signed: Treat the raw bits as a two's-complement signed integer before applying scale.
 # enum:   Integer-to-label map used by the UI for display; raw integer is still stored in the DB.
+# flags:  Bit-index-to-label map for bitfield signals (fault/limit registers). Unlike enum,
+#         multiple bits can be set at once, so the UI lists every active flag (e.g.
+#         "OVERVOLTAGE | OVERCURRENT"); the raw integer is still stored in the DB.
+#
+#         some_message.some_signal:
+#           flags:
+#             0: FIRST_FAULT
+#             1: SECOND_FAULT
 # float:  Firmware float scaling (autogen `type: float`): a float in [min, max] quantized
 #         into the signal's bits, with raw 0 = underflow and raw 2^length-1 = overflow
 #         sentinels (decoded as min-1 / max+1, exactly like the firmware getters).
@@ -24,17 +32,175 @@ rules:
   ws22_bus.bus_current_ca:
     scale: 0.01
     signed: true
+  power_input_stats.input_aux_voltage:
+    scale: 0.001
   ws22_velocity.motor_velocity_rpm:
     scale: 0.1
     signed: true
   ws22_velocity.vehicle_velocity_kph:
     scale: 0.01
   ws22_temp.motor_temp:
-    scale: 0.1
+    # Motor thermistor reports inverted (right magnitude, wrong sign), so negate
+    # the 0.1 scale to un-invert it. Heatsink sensor is unaffected.
+    scale: -0.1
     signed: true
   ws22_temp.heatsink_temp:
     scale: 0.1
     signed: true
+  battery_stats_B.max_cell_voltage:
+    float:
+      min: 2.0
+      max: 5.0
+  battery_stats_B.min_cell_voltage:
+    float:
+      min: 2.0
+      max: 5.0
+  # Per-cell voltages from AFE1 and AFE2 (voltage_0..17 each), split across
+  # the status A–F messages. Same 20000..50000 -> 2.0..5.0 V rescale.
+  AFE1_status_A.voltage_0:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_A.voltage_1:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_A.voltage_2:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_B.voltage_3:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_B.voltage_4:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_B.voltage_5:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_C.voltage_6:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_C.voltage_7:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_C.voltage_8:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_D.voltage_9:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_D.voltage_10:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_D.voltage_11:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_E.voltage_12:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_E.voltage_13:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_E.voltage_14:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_F.voltage_15:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_F.voltage_16:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE1_status_F.voltage_17:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_A.voltage_0:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_A.voltage_1:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_A.voltage_2:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_B.voltage_3:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_B.voltage_4:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_B.voltage_5:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_C.voltage_6:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_C.voltage_7:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_C.voltage_8:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_D.voltage_9:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_D.voltage_10:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_D.voltage_11:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_E.voltage_12:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_E.voltage_13:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_E.voltage_14:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_F.voltage_15:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_F.voltage_16:
+    float:
+      min: 2.0
+      max: 5.0
+  AFE2_status_F.voltage_17:
+    float:
+      min: 2.0
+      max: 5.0
   ws22_drive_cmd.drive_current:
     scale: 0.0001
   ws22_drive_cmd.drive_velocity_rpm:
@@ -49,3 +215,40 @@ rules:
       5: BRAKE
       6: REGEN
       7: FAULT
+  # ── Bitfield fault/limit registers (decoded from firmware enums) ──────────────
+  # BpsFault (rear_controller_status.bps_fault, 11 bits).
+  rear_controller_status.bps_fault:
+    flags:
+      0: OVERVOLTAGE
+      1: UNBALANCE
+      2: OVERTEMP_AMBIENT
+      3: COMMS_LOSS_AFE
+      4: COMMS_LOSS_CURR_SENSE
+      5: OVERTEMP_CELL
+      6: OVERCURRENT
+      7: UNDERVOLTAGE
+      8: KILLSWITCH
+      9: RELAY_CLOSE_FAILED
+      10: DISCONNECTED
+  # Ws22MotorFlags error half (bits 0-8). Firmware defines both CFG_READ_ERROR and
+  # UVLO at bit 6 (bit 5 is unused) — likely a firmware typo — so bit 6 covers both.
+  ws22_status.error_flags:
+    flags:
+      0: HW_OVERCURRENT
+      1: SW_OVERCURRENT
+      2: DC_BUS_OVERVOLTAGE
+      3: BAD_HALL_SEQUENCE
+      4: WATCHDOG_RESET
+      6: CFG_READ_ERROR/UVLO
+      7: DESATURATION_FAULT
+      8: MOTOR_OVER_SPEED
+  # Ws22MotorFlags limit half (bits 9-15).
+  ws22_status.limit_flags:
+    flags:
+      9: OUTPUT_VOLTAGE_PWM
+      10: MOTOR_CURRENT
+      11: VELOCITY
+      12: BUS_CURRENT
+      13: BUS_VOLTAGE_UPPER
+      14: BUS_VOLTAGE_LOWER
+      15: TEMPERATURE

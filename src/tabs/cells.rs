@@ -1,4 +1,4 @@
-use crate::db::signal_store::latest_value;
+use crate::db::signal_store::{latest_value_id, max_signal_id};
 use egui_extras::{Column, TableBuilder};
 use rusqlite::Connection;
 
@@ -18,6 +18,9 @@ pub struct CellsTab {
     cells:     Vec<CellRef>,
     values:    Vec<Option<f64>>,
     last_poll: std::time::Instant,
+    // Only samples with id > baseline_id are shown, so a fresh connect never
+    // displays cell voltages left in the sqlite file by a previous session.
+    baseline_id: i64,
 }
 
 impl CellsTab {
@@ -29,7 +32,18 @@ impl CellsTab {
             values,
             // Backdate so the first show() polls immediately.
             last_poll: std::time::Instant::now() - std::time::Duration::from_secs(1),
+            baseline_id: 0,
         }
+    }
+
+    /// Start a fresh session: blank the grid and ignore every row already in the
+    /// DB, so a new (or reconnected) serial capture never shows stale voltages
+    /// from a previous session. Mirrors `SignalTableTab::reset_to_latest`.
+    pub fn reset_to_latest(&mut self, conn: &Connection) {
+        for v in &mut self.values {
+            *v = None;
+        }
+        self.baseline_id = max_signal_id(conn).unwrap_or(self.baseline_id);
     }
 
     fn poll(&mut self, conn: &Connection) {
@@ -38,7 +52,15 @@ impl CellsTab {
         }
         self.last_poll = std::time::Instant::now();
         for (i, c) in self.cells.iter().enumerate() {
-            self.values[i] = latest_value(conn, &c.message, &c.signal).ok().flatten();
+            // Keep the current value unless a newer-than-baseline sample exists;
+            // samples from a prior session (id <= baseline) are ignored.
+            if let Some((v, _)) = latest_value_id(conn, &c.message, &c.signal)
+                .ok()
+                .flatten()
+                .filter(|(_, id)| *id > self.baseline_id)
+            {
+                self.values[i] = Some(v);
+            }
         }
     }
 

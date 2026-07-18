@@ -14,6 +14,11 @@ pub struct SignalDef {
     pub signed:    bool,
     #[serde(default, rename = "enum")]
     pub enum_map:  Option<HashMap<String, String>>,
+    /// Bitfield labels: bit index (as a string key) -> label. Present on signals
+    /// that pack several independent flags (e.g. fault/limit registers). Unlike
+    /// `enum`, several bits can be set at once, so the UI lists every active one.
+    #[serde(default)]
+    pub flags:     Option<HashMap<String, String>>,
     /// "float" marks firmware float scaling: a float in [min, max] quantized into
     /// the signal's bits (autogen `type: float` or a postprocess `float:` rule).
     #[serde(default, rename = "type")]
@@ -71,6 +76,46 @@ pub fn build_enum_lookup(messages: &[CanMessage]) -> EnumLookup {
         }
     }
     lookup
+}
+
+/// Build a lookup from (message_name, signal_name) to its bit→label list,
+/// sorted by bit index. Used by the UI to render bitfield signals as the set of
+/// all currently-active flags.
+pub type FlagLookup = HashMap<(String, String), Vec<(u32, String)>>;
+
+pub fn build_flag_lookup(messages: &[CanMessage]) -> FlagLookup {
+    let mut lookup = FlagLookup::new();
+    for msg in messages {
+        for sig in &msg.signals {
+            if let Some(map) = &sig.flags {
+                let mut bits: Vec<(u32, String)> = map
+                    .iter()
+                    .filter_map(|(k, v)| k.parse::<u32>().ok().map(|b| (b, v.clone())))
+                    .collect();
+                bits.sort_by_key(|(b, _)| *b);
+                lookup.insert((msg.name.clone(), sig.name.clone()), bits);
+            }
+        }
+    }
+    lookup
+}
+
+/// Format a bitfield value as the list of active flag labels, e.g.
+/// "OVERVOLTAGE | OVERCURRENT". Returns "none" when no defined bit is set.
+/// `value` is the raw integer the decoder stored as an f64 (scale 1.0 for
+/// bitfields, so it round-trips exactly).
+pub fn format_flags(value: f64, bits: &[(u32, String)]) -> String {
+    let raw = value.round() as i64 as u64;
+    let active: Vec<&str> = bits
+        .iter()
+        .filter(|(b, _)| *b < 64 && raw & (1u64 << b) != 0)
+        .map(|(_, label)| label.as_str())
+        .collect();
+    if active.is_empty() {
+        "none".to_string()
+    } else {
+        active.join(" | ")
+    }
 }
 
 /// Extract a signal value from a little-endian payload.
@@ -159,6 +204,49 @@ mod tests {
         assert_eq!(decode_float(255, len, min, max), 50001.0); // overflow
         assert_eq!(decode_float(1, len, min, max), 20000.0);
         assert_eq!(decode_float(254, len, min, max), 50000.0);
+    }
+
+    #[test]
+    fn format_flags_lists_all_active_bits_in_order() {
+        let bits = vec![
+            (0u32, "OVERVOLTAGE".to_string()),
+            (6, "OVERCURRENT".to_string()),
+            (10, "DISCONNECTED".to_string()),
+        ];
+        // bits 0 and 6 set -> 0b1000001 = 65
+        assert_eq!(format_flags(65.0, &bits), "OVERVOLTAGE | OVERCURRENT");
+        // no bits set
+        assert_eq!(format_flags(0.0, &bits), "none");
+        // a bit with no label (bit 1) set alongside bit 10 -> only labeled bit shows
+        assert_eq!(format_flags((1u64 << 10 | 1 << 1) as f64, &bits), "DISCONNECTED");
+    }
+
+    #[test]
+    fn build_flag_lookup_sorts_bits_and_ignores_non_flag_signals() {
+        let yaml = "
+messages:
+- id: 19
+  name: rear_controller_status
+  dlc: 4
+  signals:
+  - name: bps_fault
+    start_bit: 0
+    length: 11
+    flags:
+      '2': OVERTEMP_AMBIENT
+      '0': OVERVOLTAGE
+  - name: cell_at_fault
+    start_bit: 11
+    length: 8
+";
+        let parsed: GlobalCanYaml = serde_yaml::from_str(yaml).unwrap();
+        let lookup = build_flag_lookup(&parsed.messages);
+        let bits = lookup
+            .get(&("rear_controller_status".to_string(), "bps_fault".to_string()))
+            .unwrap();
+        assert_eq!(bits, &vec![(0, "OVERVOLTAGE".to_string()), (2, "OVERTEMP_AMBIENT".to_string())]);
+        // plain signal has no flags entry
+        assert!(!lookup.contains_key(&("rear_controller_status".to_string(), "cell_at_fault".to_string())));
     }
 
     #[test]

@@ -99,6 +99,18 @@ messages:
   - name: bps_fault
     start_bit: 0
     length: 11
+    flags:
+      '0': OVERVOLTAGE
+      '1': UNBALANCE
+      '2': OVERTEMP_AMBIENT
+      '3': COMMS_LOSS_AFE
+      '4': COMMS_LOSS_CURR_SENSE
+      '5': OVERTEMP_CELL
+      '6': OVERCURRENT
+      '7': UNDERVOLTAGE
+      '8': KILLSWITCH
+      '9': RELAY_CLOSE_FAILED
+      '10': DISCONNECTED
   - name: cell_at_fault
     start_bit: 11
     length: 8
@@ -133,9 +145,15 @@ messages:
   - name: pack_voltage_v
     start_bit: 0
     length: 32
+    type: float
+    min: 0.0
+    max: 200.0
   - name: pack_soc
     start_bit: 32
     length: 16
+    type: float
+    min: 0.0
+    max: 100.0
 - id: 51
   name: battery_stats_B
   dlc: 8
@@ -143,15 +161,24 @@ messages:
   - name: max_cell_voltage
     start_bit: 0
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: min_cell_voltage
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: max_temperature
     start_bit: 16
     length: 16
   - name: pack_current_a
     start_bit: 32
     length: 32
+    type: float
+    min: -200.0
+    max: 200.0
 - id: 1107
   name: bps_fault_info
   dlc: 8
@@ -172,6 +199,7 @@ messages:
   - name: input_aux_voltage
     start_bit: 32
     length: 16
+    scale: 0.001
   - name: input_aux_current
     start_bit: 48
     length: 16
@@ -285,12 +313,21 @@ messages:
   - name: voltage_0
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_1
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_2
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1859
   name: AFE1_status_B
   dlc: 4
@@ -301,12 +338,21 @@ messages:
   - name: voltage_3
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_4
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_5
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1875
   name: AFE1_status_C
   dlc: 4
@@ -317,12 +363,21 @@ messages:
   - name: voltage_6
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_7
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_8
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1891
   name: AFE1_status_D
   dlc: 4
@@ -333,12 +388,21 @@ messages:
   - name: voltage_9
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_10
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_11
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1907
   name: AFE1_status_E
   dlc: 4
@@ -349,12 +413,21 @@ messages:
   - name: voltage_12
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_13
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_14
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1923
   name: AFE1_status_F
   dlc: 4
@@ -365,12 +438,21 @@ messages:
   - name: voltage_15
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_16
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_17
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1939
   name: AFE2_status_A
   dlc: 4
@@ -381,12 +463,21 @@ messages:
   - name: voltage_0
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_1
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_2
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1955
   name: AFE2_status_B
   dlc: 4
@@ -397,12 +488,21 @@ messages:
   - name: voltage_3
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_4
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_5
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1971
   name: AFE2_status_C
   dlc: 4
@@ -413,12 +513,21 @@ messages:
   - name: voltage_6
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_7
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_8
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 1987
   name: AFE2_status_D
   dlc: 4
@@ -429,12 +538,21 @@ messages:
   - name: voltage_9
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_10
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_11
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 2003
   name: AFE2_status_E
   dlc: 4
@@ -445,12 +563,21 @@ messages:
   - name: voltage_12
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_13
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_14
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 2019
   name: AFE2_status_F
   dlc: 4
@@ -461,12 +588,21 @@ messages:
   - name: voltage_15
     start_bit: 8
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_16
     start_bit: 16
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
   - name: voltage_17
     start_bit: 24
     length: 8
+    type: float
+    min: 2.0
+    max: 5.0
 - id: 2035
   name: AFE_temperature
   dlc: 8
@@ -553,9 +689,26 @@ messages:
   - name: error_flags
     start_bit: 0
     length: 16
+    flags:
+      '0': HW_OVERCURRENT
+      '1': SW_OVERCURRENT
+      '2': DC_BUS_OVERVOLTAGE
+      '3': BAD_HALL_SEQUENCE
+      '4': WATCHDOG_RESET
+      '6': CFG_READ_ERROR/UVLO
+      '7': DESATURATION_FAULT
+      '8': MOTOR_OVER_SPEED
   - name: limit_flags
     start_bit: 16
     length: 16
+    flags:
+      '9': OUTPUT_VOLTAGE_PWM
+      '10': MOTOR_CURRENT
+      '11': VELOCITY
+      '12': BUS_CURRENT
+      '13': BUS_VOLTAGE_UPPER
+      '14': BUS_VOLTAGE_LOWER
+      '15': TEMPERATURE
 - id: 2040
   name: ws22_bus
   dlc: 4
@@ -589,7 +742,7 @@ messages:
   - name: motor_temp
     start_bit: 0
     length: 16
-    scale: 0.1
+    scale: -0.1
     signed: true
   - name: heatsink_temp
     start_bit: 16

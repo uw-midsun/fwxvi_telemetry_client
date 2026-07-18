@@ -218,6 +218,10 @@ def generate_global_messages(
                         sig["signed"] = bool(rule["signed"])
                     if "enum" in rule:
                         sig["enum"] = {str(k): str(v) for k, v in rule["enum"].items()}
+                    if "flags" in rule:
+                        # Bitfield labels (bit index -> label) for fault/limit registers.
+                        # The UI lists every active bit rather than a single label.
+                        sig["flags"] = {str(k): str(v) for k, v in rule["flags"].items()}
                     if "float" in rule:
                         # Declare (or override) firmware float scaling for this signal.
                         # Same quantization as autogen "type: float" in the board files.

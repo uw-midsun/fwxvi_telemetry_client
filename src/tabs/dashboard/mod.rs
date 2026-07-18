@@ -4,7 +4,7 @@ mod config;
 pub use config::DashboardSetup;
 use config::{PanelConfig, ROW_UNITS};
 
-use crate::decoder::can_config::EnumLookup;
+use crate::decoder::can_config::{EnumLookup, FlagLookup};
 use charts::{DataCache, RenderCache};
 use rusqlite::Connection;
 
@@ -52,12 +52,18 @@ impl DashboardTab {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, conn: Option<&Connection>, enum_lookup: &EnumLookup) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        conn: Option<&Connection>,
+        enum_lookup: &EnumLookup,
+        flag_lookup: &FlagLookup,
+    ) {
         self.draw_toolbar(ui);
         ui.separator();
 
         if let Some(conn) = conn {
-            self.maybe_refresh(conn, enum_lookup);
+            self.maybe_refresh(conn, enum_lookup, flag_lookup);
         }
 
         self.draw_panels(ui);
@@ -122,7 +128,7 @@ impl DashboardTab {
 
     // ── Data fetch ────────────────────────────────────────────────────────────
 
-    fn maybe_refresh(&mut self, conn: &Connection, enum_lookup: &EnumLookup) {
+    fn maybe_refresh(&mut self, conn: &Connection, enum_lookup: &EnumLookup, flag_lookup: &FlagLookup) {
         let elapsed    = self.last_refresh.elapsed().as_millis();
         let stale      = self.live && elapsed >= REFRESH_MS;
         let first_load = self.cache.is_empty() && !self.setup.panels.is_empty();
@@ -159,7 +165,7 @@ impl DashboardTab {
 
         // Rebuild render-ready artifacts here (refresh cadence), so the draw path
         // never decimates, rebins, or clones raw vectors.
-        self.render = RenderCache::build(&new_cache, &self.setup.panels, enum_lookup);
+        self.render = RenderCache::build(&new_cache, &self.setup.panels, enum_lookup, flag_lookup);
         self.cache  = new_cache;
     }
 
