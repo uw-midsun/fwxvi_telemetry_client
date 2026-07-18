@@ -308,9 +308,86 @@
           "min": 0.0,
           "max": 80.0,
           "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_7",
+          "label": "Thermistor 7",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_8",
+          "label": "Thermistor 8 (External)",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_9",
+          "label": "Thermistor 9",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_10",
+          "label": "Thermistor 10",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_11",
+          "label": "Thermistor 11",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_12",
+          "label": "Thermistor 12",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_13",
+          "label": "Thermistor 13",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_14",
+          "label": "Thermistor 14",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_15",
+          "label": "Thermistor 15",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_16",
+          "label": "Thermistor 16",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
+        },
+        {
+          "signal": "AFE_temperature.temperature_17",
+          "label": "Thermistor 17 (External)",
+          "min": 0.0,
+          "max": 80.0,
+          "unit": "C"
         }
       ],
-      "width": "medium"
+      "width": "full"
     },
     {
       "id": "discharge_bits",

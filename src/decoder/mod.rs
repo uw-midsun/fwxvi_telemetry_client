@@ -101,6 +101,30 @@ impl Parser {
     }
 }
 
+// ── Thermistor demux ──────────────────────────────────────────────────────────
+// AFE_temperature is a multiplexed message: the same CAN id is sent three times
+// with its `id` field set to 0, 1, 2. Each frame carries up to seven readings
+// (temperature_0..6); a reading's global thermistor index is bank*7 + n, and only
+// indices 0..=17 exist (bank 2 stops at thermistor 17). Demuxing at decode time
+// spreads the 18 readings across distinct signal names (temperature_0..17) rather
+// than letting each successive frame overwrite the last under the same seven keys.
+const TEMP_MSG:       &str = "AFE_temperature";
+const TEMPS_PER_BANK: i64  = 7;
+const MAX_THERMISTOR: i64  = 17;
+
+/// Map a signal on the multiplexed AFE_temperature frame to the global signal
+/// name it should be stored under. `bank` is the frame's `id` field (0, 1, 2);
+/// temperature_n becomes temperature_{bank*7 + n}. Returns `None` for the bank
+/// selector itself (and anything else that isn't a temperature) and for indices
+/// past thermistor 17 (bank 2 only carries thermistors 14..17).
+fn thermistor_signal(bank: i64, sig_name: &str) -> Option<String> {
+    let local  = sig_name.strip_prefix("temperature_")?.parse::<i64>().ok()?;
+    let global = bank * TEMPS_PER_BANK + local;
+    (0..=MAX_THERMISTOR)
+        .contains(&global)
+        .then(|| format!("temperature_{global}"))
+}
+
 // ── Decoder thread ────────────────────────────────────────────────────────────
 
 pub enum DecoderCmd {
@@ -224,6 +248,17 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
 
     let ts_ms = chrono::Utc::now().timestamp_millis();
 
+    // For the multiplexed thermistor message the `id` field selects which bank of
+    // readings this frame carries; `None` for every other message (no demux).
+    let temp_bank: Option<i64> = (msg.name == TEMP_MSG)
+        .then(|| {
+            msg.signals
+                .iter()
+                .find(|s| s.name == "id")
+                .map(|s| extract_signal(payload, s.start_bit, s.length, false))
+        })
+        .flatten();
+
     // One transaction per datagram: collapses N loose autocommits into a single
     // WAL commit. `unchecked_transaction` borrows &Connection; &tx deref-coerces
     // to &Connection for insert_signal.
@@ -235,6 +270,17 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
         }
     };
     for sig in &msg.signals {
+        // Demux thermistors: remap temperature_n -> temperature_{bank*7+n}, dropping
+        // the bank selector (`id`) and any index past thermistor 17. Non-temperature
+        // messages keep their signal names verbatim.
+        let signal_name = match temp_bank {
+            Some(bank) => match thermistor_signal(bank, &sig.name) {
+                Some(name) => name,
+                None => continue,
+            },
+            None => sig.name.clone(),
+        };
+
         // Firmware float scaling wins over scale/signed: the raw code is an unsigned
         // quantization of [min, max], inverted exactly like the autogen getters.
         let value = if let Some((min, max)) = sig.float_range() {
@@ -249,11 +295,43 @@ fn decode_datagram(conn: &Connection, dgram: &Datagram, messages: &[CanMessage],
             can_id:       dgram.id as u32,
             parent_name:  msg.name.clone(),
             message_name: msg.name.clone(),
-            signal_name:  sig.name.clone(),
+            signal_name,
             value,
         };
         let _ = insert_signal(&tx, &sample);
     }
     let _ = tx.commit();
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thermistor_demux_maps_three_banks_onto_0_through_17() {
+        // Bank 0 -> thermistors 0..6, bank 1 -> 7..13, bank 2 -> 14..17.
+        for local in 0..7 {
+            assert_eq!(
+                thermistor_signal(0, &format!("temperature_{local}")),
+                Some(format!("temperature_{local}"))
+            );
+            assert_eq!(
+                thermistor_signal(1, &format!("temperature_{local}")),
+                Some(format!("temperature_{}", 7 + local))
+            );
+        }
+        // Bank 2 only carries thermistors 14..17 (locals 0..3); 4..6 spill past 17.
+        assert_eq!(thermistor_signal(2, "temperature_0"), Some("temperature_14".into()));
+        assert_eq!(thermistor_signal(2, "temperature_3"), Some("temperature_17".into()));
+        for local in 4..7 {
+            assert_eq!(thermistor_signal(2, &format!("temperature_{local}")), None);
+        }
+    }
+
+    #[test]
+    fn thermistor_demux_ignores_the_bank_selector_and_non_temps() {
+        assert_eq!(thermistor_signal(0, "id"), None);
+        assert_eq!(thermistor_signal(1, "voltage_3"), None);
+    }
 }

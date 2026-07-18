@@ -7,6 +7,14 @@ use rusqlite::Connection;
 const AFE_LETTERS: [char; 6] = ['A', 'B', 'C', 'D', 'E', 'F'];
 const CELLS_PER_AFE: usize   = 18;
 
+// The 18 thermistors arrive demuxed by the decoder onto AFE_temperature as
+// temperature_0..17 (see decoder::TEMP_MSG). Thermistors 8 and 17 sit outside the
+// pack — they measure external/ambient temperature, so they're flagged and left
+// out of the "hottest cell" highlight.
+const TEMP_MESSAGE:  &str            = "AFE_temperature";
+const THERMISTORS:   usize           = 18;
+const EXTERNAL_THERM: [usize; 2]     = [8, 17];
+
 /// One cell's identity: the (message, signal) that carries its voltage. The
 /// cell's global index (0..35) is just its position in `CellsTab::cells`.
 struct CellRef {
@@ -17,6 +25,8 @@ struct CellRef {
 pub struct CellsTab {
     cells:     Vec<CellRef>,
     values:    Vec<Option<f64>>,
+    // Latest temperature for thermistors 0..17, indexed by global thermistor id.
+    therms:    Vec<Option<f64>>,
     last_poll: std::time::Instant,
     // Only samples with id > baseline_id are shown, so a fresh connect never
     // displays cell voltages left in the sqlite file by a previous session.
@@ -30,6 +40,7 @@ impl CellsTab {
         Self {
             cells,
             values,
+            therms: vec![None; THERMISTORS],
             // Backdate so the first show() polls immediately.
             last_poll: std::time::Instant::now() - std::time::Duration::from_secs(1),
             baseline_id: 0,
@@ -42,6 +53,9 @@ impl CellsTab {
     pub fn reset_to_latest(&mut self, conn: &Connection) {
         for v in &mut self.values {
             *v = None;
+        }
+        for t in &mut self.therms {
+            *t = None;
         }
         self.baseline_id = max_signal_id(conn).unwrap_or(self.baseline_id);
     }
@@ -60,6 +74,15 @@ impl CellsTab {
                 .filter(|(_, id)| *id > self.baseline_id)
             {
                 self.values[i] = Some(v);
+            }
+        }
+        for (i, t) in self.therms.iter_mut().enumerate() {
+            if let Some((v, _)) = latest_value_id(conn, TEMP_MESSAGE, &format!("temperature_{i}"))
+                .ok()
+                .flatten()
+                .filter(|(_, id)| *id > self.baseline_id)
+            {
+                *t = Some(v);
             }
         }
     }
@@ -97,11 +120,33 @@ impl CellsTab {
                 ));
             }
         });
+        // Hottest in-pack thermistor (externals excluded) for the temp highlight.
+        let mut hot_i: Option<usize> = None;
+        for (i, v) in self.therms.iter().enumerate() {
+            if EXTERNAL_THERM.contains(&i) { continue; }
+            let Some(v) = v else { continue };
+            if hot_i.map_or(true, |h| *v > self.therms[h].unwrap()) { hot_i = Some(i); }
+        }
+
         ui.separator();
 
-        // Two AFE groups side by side: 18 rows, columns [Cell, V | Cell, V].
+        // Cell voltages on the left, thermistor temperatures on the right — the
+        // cell grid is narrow, so the temps fill the otherwise-empty space.
+        ui.horizontal_top(|ui| {
+            ui.scope(|ui| {
+                ui.set_max_width(380.0);
+                self.draw_cell_table(ui, min_i, max_i);
+            });
+            ui.separator();
+            self.draw_therm_table(ui, hot_i);
+        });
+    }
+
+    /// Two AFE groups side by side: 18 rows, columns [Cell, V | Cell, V].
+    fn draw_cell_table(&self, ui: &mut egui::Ui, min_i: Option<usize>, max_i: Option<usize>) {
         let available = ui.available_height();
         TableBuilder::new(ui)
+            .id_salt("cell_table")
             .striped(true)
             .resizable(true)
             .max_scroll_height(available)
@@ -125,6 +170,46 @@ impl CellsTab {
                     self.value_cell(&mut row, left, min_i, max_i);
                     row.col(|ui| { ui.monospace(right.to_string()); });
                     self.value_cell(&mut row, right, min_i, max_i);
+                });
+            });
+    }
+
+    /// 18 thermistor readings in a `Thermistor | °C` table. The hottest in-pack
+    /// sensor is tinted red; the two external sensors are marked and never win it.
+    fn draw_therm_table(&self, ui: &mut egui::Ui, hot_i: Option<usize>) {
+        let available = ui.available_height();
+        TableBuilder::new(ui)
+            .id_salt("therm_table")
+            .striped(true)
+            .resizable(false)
+            .max_scroll_height(available)
+            .column(Column::initial(110.0).at_least(80.0))
+            .column(Column::initial(90.0).at_least(50.0))
+            .header(20.0, |mut h| {
+                h.col(|ui| { ui.strong("Thermistor"); });
+                h.col(|ui| { ui.strong("Temp (°C)"); });
+            })
+            .body(|body| {
+                body.rows(20.0, THERMISTORS, |mut row| {
+                    let i = row.index();
+                    let external = EXTERNAL_THERM.contains(&i);
+                    row.col(|ui| {
+                        if external {
+                            ui.monospace(format!("{i}  (ext)"));
+                        } else {
+                            ui.monospace(i.to_string());
+                        }
+                    });
+                    row.col(|ui| {
+                        let text = fmt_val(self.therms[i]);
+                        if self.therms[i].is_none() {
+                            ui.weak(text);
+                        } else if Some(i) == hot_i {
+                            ui.colored_label(egui::Color32::from_rgb(220, 90, 90), text);
+                        } else {
+                            ui.monospace(text);
+                        }
+                    });
                 });
             });
     }
