@@ -847,10 +847,13 @@ fn draw_status(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, _he
         .striped(true)
         .show(ui, |ui| {
             for sig_key in &panel.signals {
-                let name = pretty_name(sig_key.rsplit('.').next().unwrap_or(sig_key));
-                let value = render.labels.get(sig_key).cloned()
+                // Skip signals with no data so conditionally-present rows (e.g. the
+                // bps_fault_info detail fields, only populated during a fault) don't
+                // linger as empty "—" rows when their fault isn't active.
+                let Some(value) = render.labels.get(sig_key).cloned()
                     .or_else(|| render.latest.get(sig_key).map(|&v| format_number(v)))
-                    .unwrap_or_else(|| "—".to_string());
+                else { continue };
+                let name = pretty_name(sig_key.rsplit('.').next().unwrap_or(sig_key));
 
                 ui.label(egui::RichText::new(name).weak());
                 ui.label(egui::RichText::new(value).strong());

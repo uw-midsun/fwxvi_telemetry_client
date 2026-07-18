@@ -183,6 +183,14 @@
       "signals": [
         "drive_status.drive_state",
         "rear_controller_status.bps_fault",
+        "bps_fault_info.fault_cell_index",
+        "bps_fault_info.fault_cell_voltage",
+        "bps_fault_info.fault_temperature_c",
+        "bps_fault_info.fault_current_a",
+        "bps_fault_info.fault_max_cell_index",
+        "bps_fault_info.fault_min_cell_index",
+        "bps_fault_info.fault_max_cell_voltage",
+        "bps_fault_info.fault_min_cell_voltage",
         "ws22_status.error_flags",
         "ws22_status.limit_flags"
       ],
