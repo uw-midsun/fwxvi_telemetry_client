@@ -1,4 +1,4 @@
-use crate::decoder::can_config::EnumLookup;
+use crate::decoder::can_config::{self, EnumLookup, FlagLookup};
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints, Points};
 use std::collections::{BTreeMap, HashMap};
 
@@ -42,7 +42,12 @@ pub struct RenderCache {
 
 impl RenderCache {
     /// Build all render artifacts for the given panels from the raw cache.
-    pub fn build(raw: &DataCache, panels: &[PanelConfig], enum_lookup: &EnumLookup) -> Self {
+    pub fn build(
+        raw: &DataCache,
+        panels: &[PanelConfig],
+        enum_lookup: &EnumLookup,
+        flag_lookup: &FlagLookup,
+    ) -> Self {
         let mut rc = RenderCache::default();
         for panel in panels {
             match panel.chart_type {
@@ -120,12 +125,20 @@ impl RenderCache {
                     rc.regen.insert(panel.id.clone(), regen);
                 }
                 ChartType::Status => {
-                    // Latest value per signal plus its enum label (if the CAN config
-                    // defines one), resolved here so the draw path stays lookup-free.
+                    // Latest value per signal plus its display label, resolved here so
+                    // the draw path stays lookup-free. Bitfield signals list every
+                    // active flag; enum signals map to a single label.
                     for key in &panel.signals {
                         let Some(v) = raw.get(key).and_then(|p| p.last()).map(|p| p[1]) else { continue };
                         rc.latest.insert(key.clone(), v);
-                        let label = PanelConfig::signal_parts(key)
+                        let parts = PanelConfig::signal_parts(key);
+                        if let Some(bits) = parts
+                            .and_then(|(m, s)| flag_lookup.get(&(m.to_string(), s.to_string())))
+                        {
+                            rc.labels.insert(key.clone(), can_config::format_flags(v, bits));
+                            continue;
+                        }
+                        let label = parts
                             .and_then(|(m, s)| enum_lookup.get(&(m.to_string(), s.to_string())))
                             .and_then(|map| map.get(&(v as i64).to_string()));
                         if let Some(l) = label {
@@ -138,6 +151,16 @@ impl RenderCache {
                     for key in &panel.signals {
                         if let Some(v) = raw.get(key).and_then(|p| p.last()).map(|p| p[1]) {
                             rc.latest.insert(key.clone(), v);
+                        }
+                    }
+                }
+                ChartType::Matrix => {
+                    // Latest value of every cell signal across all rows.
+                    for row in &panel.rows {
+                        for cell in &row.cells {
+                            if let Some(v) = raw.get(&cell.signal).and_then(|p| p.last()).map(|p| p[1]) {
+                                rc.latest.insert(cell.signal.clone(), v);
+                            }
                         }
                     }
                 }
@@ -249,6 +272,11 @@ pub fn panel_height(panel: &PanelConfig) -> f32 {
             let n = panel.signals.len().max(1) as f32;
             (n * 30.0 + 14.0).clamp(56.0, 360.0)
         }
+        ChartType::Matrix => {
+            // One row per data row plus the header row.
+            let n = (panel.rows.len() + 1).max(1) as f32;
+            (n * 30.0 + 14.0).clamp(56.0, 360.0)
+        }
         ChartType::Meters => {
             let n = meter_row_count(panel).max(1) as f32;
             (n * 28.0 + 10.0).clamp(56.0, 460.0)
@@ -268,7 +296,7 @@ pub fn draw_panel(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, 
     let card = matches!(
         panel.chart_type,
         ChartType::Meters | ChartType::Pedals | ChartType::Status
-            | ChartType::Numeric | ChartType::Stat | ChartType::Leds
+            | ChartType::Numeric | ChartType::Stat | ChartType::Leds | ChartType::Matrix
     );
     let frame = if card {
         egui::Frame::none()
@@ -294,6 +322,7 @@ pub fn draw_panel(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, 
             ChartType::Stat      => draw_stat(ui, panel, render, height),
             ChartType::Meters    => draw_meters(ui, panel, render, height),
             ChartType::Pedals    => draw_pedals(ui, panel, render, height),
+            ChartType::Matrix    => draw_matrix(ui, panel, render, height),
         }
     });
 }
@@ -309,7 +338,7 @@ fn draw_line(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, heigh
     ui.horizontal_top(|ui| {
         let plot_w = (ui.available_width() - readout_w - gap).max(120.0);
 
-        Plot::new(&panel.id)
+        let mut plot = Plot::new(&panel.id)
             .width(plot_w)
             .height(height)
             .show_background(false)          // no dark canvas box
@@ -318,14 +347,26 @@ fn draw_line(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, heigh
             .allow_scroll(false)             // …or scroll…
             .allow_boxed_zoom(false)
             .auto_bounds([true, true].into()) // …but always fits the current data
-            .legend(egui_plot::Legend::default())
-            .show(ui, |plot_ui| {
-                for sig_key in &panel.signals {
+            .legend(egui_plot::Legend::default());
+
+        // Predefined y-range: force these endpoints into view so the axis holds a
+        // fixed span, while auto-bounds still lets it grow to fit out-of-range data.
+        if let Some([y_min, y_max]) = panel.y_range {
+            plot = plot.include_y(y_min).include_y(y_max);
+        }
+
+        plot.show(ui, |plot_ui| {
+                for (i, sig_key) in panel.signals.iter().enumerate() {
                     if let Some(pts) = render.lines.get(sig_key) {
                         // pts is already decimated (<= ~LINE_TARGET), so this clone is cheap.
                         let pp = PlotPoints::new(pts.clone());
                         let label = sig_key.rsplit('.').next().unwrap_or(sig_key);
-                        plot_ui.line(Line::new(pp).name(label));
+                        let mut line = Line::new(pp).name(label);
+                        // Explicit per-signal color if configured; else egui auto-assigns.
+                        if let Some(c) = panel.colors.get(i).and_then(|s| parse_color(s)) {
+                            line = line.color(c);
+                        }
+                        plot_ui.line(line);
                     }
                 }
             });
@@ -472,6 +513,39 @@ fn draw_numeric(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, he
             }
         },
     );
+}
+
+/// Parse a color spec from the config: a `#RRGGBB` / `#RRGGBBAA` hex string or
+/// one of a small set of named colors. Returns `None` for anything unrecognized,
+/// so the caller falls back to egui's auto-assigned line color.
+fn parse_color(s: &str) -> Option<egui::Color32> {
+    let t = s.trim();
+    if let Some(hex) = t.strip_prefix('#') {
+        let bytes: Vec<u8> = (0..hex.len())
+            .step_by(2)
+            .filter_map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+            .collect();
+        return match bytes.len() {
+            3 => Some(egui::Color32::from_rgb(bytes[0], bytes[1], bytes[2])),
+            4 => Some(egui::Color32::from_rgba_unmultiplied(bytes[0], bytes[1], bytes[2], bytes[3])),
+            _ => None,
+        };
+    }
+    // Named colors chosen to read on both light and dark backgrounds.
+    let c = match t.to_ascii_lowercase().as_str() {
+        "red"     => egui::Color32::from_rgb(229, 72, 72),
+        "orange"  => egui::Color32::from_rgb(240, 150, 50),
+        "yellow"  => egui::Color32::from_rgb(232, 200, 72),
+        "green"   => egui::Color32::from_rgb(90, 200, 90),
+        "blue"    => egui::Color32::from_rgb(96, 165, 250),
+        "cyan"    => egui::Color32::from_rgb(70, 190, 200),
+        "purple"  => egui::Color32::from_rgb(170, 110, 220),
+        "magenta" => egui::Color32::from_rgb(220, 90, 200),
+        "gray" | "grey" => egui::Color32::from_rgb(150, 150, 150),
+        "white"   => egui::Color32::from_rgb(230, 230, 230),
+        _ => return None,
+    };
+    Some(c)
 }
 
 /// Format a value for display, trimming trailing zeros (e.g. 3.500 -> "3.5").
@@ -785,6 +859,45 @@ fn draw_status(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, _he
         });
 }
 
+// ── Matrix: 2-D value grid ────────────────────────────────────────────────────
+
+/// A grid of latest values: a header row of `columns`, then one row per
+/// `MatrixRow`. Each cell shows its signal's latest value with an optional unit,
+/// or "—" when there's no sample. Cells map positionally to the columns.
+fn draw_matrix(ui: &mut egui::Ui, panel: &PanelConfig, render: &RenderCache, _height: f32) {
+    let ncols = panel.columns.len();
+    egui::Grid::new(&panel.id)
+        .num_columns(ncols + 1)
+        .spacing(egui::vec2(18.0, 8.0))
+        .striped(true)
+        .show(ui, |ui| {
+            // Header: empty corner cell, then the column labels.
+            ui.label("");
+            for col in &panel.columns {
+                ui.label(egui::RichText::new(col).strong());
+            }
+            ui.end_row();
+
+            for row in &panel.rows {
+                ui.label(egui::RichText::new(&row.label).weak());
+                for c in 0..ncols {
+                    let text = match row.cells.get(c) {
+                        Some(cell) => match render.latest.get(&cell.signal) {
+                            Some(&v) => match &cell.unit {
+                                Some(u) => format!("{} {}", format_number(v), u),
+                                None    => format_number(v),
+                            },
+                            None => "—".to_string(),
+                        },
+                        None => "—".to_string(),
+                    };
+                    ui.label(egui::RichText::new(text).strong());
+                }
+                ui.end_row();
+            }
+        });
+}
+
 /// Turn a snake_case signal name into a spaced Title Case label.
 fn pretty_name(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -1018,6 +1131,19 @@ mod tests {
         let bins = bin_histogram(&pts);
         // 1.2 & 1.8 -> bin 1 (count 2), 2.4 -> bin 2 (count 1), 5.0 -> bin 5 (count 1)
         assert_eq!(bins, vec![(1.0, 2.0), (2.0, 1.0), (5.0, 1.0)]);
+    }
+
+    #[test]
+    fn parse_color_handles_names_hex_and_unknown() {
+        assert_eq!(parse_color("red"), Some(egui::Color32::from_rgb(229, 72, 72)));
+        assert_eq!(parse_color("  Blue "), Some(egui::Color32::from_rgb(96, 165, 250)));
+        assert_eq!(parse_color("#FF8000"), Some(egui::Color32::from_rgb(255, 128, 0)));
+        assert_eq!(
+            parse_color("#10203040"),
+            Some(egui::Color32::from_rgba_unmultiplied(16, 32, 48, 64))
+        );
+        assert_eq!(parse_color("chartreuse"), None); // unknown -> auto color
+        assert_eq!(parse_color("#12"), None);        // malformed -> auto color
     }
 
     #[test]

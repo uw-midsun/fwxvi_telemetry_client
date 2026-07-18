@@ -1,9 +1,24 @@
 # Plan: Cell-voltage (float) & bitfield-flag postprocessing
 
-Status: **deferred / reverted.** This work was implemented and then reverted because
-it caused a "no data at all" regression (see *Root cause* below). The design is
-sound; the blocker is a data/tooling mismatch, not the code. Re-apply once the
-blocker is resolved.
+Status: **bitfield flags implemented; float auto-decode still deferred.**
+
+- **Bitfield flags (done):** `bps_fault`, `ws22_status.error_flags`,
+  `ws22_status.limit_flags` now decode to a live list of active flags. Rather than
+  the generator/decoder scheme sketched below, flags are handled like `enum`: a
+  `flags:` (bit → label) rule in `postprocess.yaml`, baked into `global_can.yaml`,
+  surfaced at display time via `can_config::FlagLookup` / `format_flags`. The raw
+  integer is still what the decoder stores; the signal table and the "Vehicle
+  Status" dashboard widget render every set bit (e.g. "OVERVOLTAGE | OVERCURRENT").
+  ⚠️ **On-wire layout assumption:** error labels are placed at enum bits 0-8 and
+  limit labels at 9-15 (per the firmware `Ws22MotorFlags` enum). If firmware packs
+  the limit register at its own bits 0-6 instead, edit the `flags:` bit indices in
+  `postprocess.yaml` (and the baked `global_can*.yaml`) — no code change needed.
+  Firmware defines both CFG_READ_ERROR and UVLO at bit 6 (bit 5 unused), so bit 6
+  carries the combined "CFG_READ_ERROR/UVLO" label.
+- **Float auto-decode (deferred):** the generator-driven scheme below is unbuilt;
+  cell/AFE voltages currently use explicit per-signal `float:` rules in
+  `postprocess.yaml` instead. The original design was reverted after a "no data at
+  all" regression (see *Root cause* below); re-apply once the blocker is resolved.
 
 ## Goals
 

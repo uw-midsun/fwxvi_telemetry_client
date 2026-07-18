@@ -95,15 +95,24 @@ pub fn query_signal_history(
 
 /// Latest recorded value for one signal, or `None` if it has no samples. Uses
 /// idx_samples_msg_sig_ts: equality on (message, signal) + ORDER BY ts_ms DESC.
-pub fn latest_value(conn: &Connection, message_name: &str, signal_name: &str) -> Result<Option<f64>> {
+/// Latest value together with its sample row id, so callers can ignore samples
+/// left over from a previous session (id <= a baseline taken at connect time).
+/// `None` when the signal has no samples.
+pub fn latest_value_id(
+    conn: &Connection,
+    message_name: &str,
+    signal_name: &str,
+) -> Result<Option<(f64, i64)>> {
     let mut stmt = conn.prepare_cached(
-        "SELECT value FROM signal_samples
+        "SELECT value, id FROM signal_samples
          WHERE message_name = ?1 AND signal_name = ?2
-         ORDER BY ts_ms DESC
+         ORDER BY id DESC
          LIMIT 1",
     )?;
     let v = stmt
-        .query_row(rusqlite::params![message_name, signal_name], |r| r.get::<_, f64>(0))
+        .query_row(rusqlite::params![message_name, signal_name], |r| {
+            Ok((r.get::<_, f64>(0)?, r.get::<_, i64>(1)?))
+        })
         .optional()?;
     Ok(v)
 }

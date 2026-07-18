@@ -1,5 +1,5 @@
 use crate::db::signal_store::{get_stats, max_signal_id, query_since};
-use crate::decoder::can_config::EnumLookup;
+use crate::decoder::can_config::{self, EnumLookup, FlagLookup};
 use crate::replay::SignalSnapshot;
 use egui_extras::{Column, TableBuilder};
 use rusqlite::Connection;
@@ -118,16 +118,16 @@ impl SignalTableTab {
 
     // ── Render ────────────────────────────────────────────────────────────────
 
-    pub fn show(&mut self, ui: &mut egui::Ui, conn: &Connection, enum_lookup: &EnumLookup) {
+    pub fn show(&mut self, ui: &mut egui::Ui, conn: &Connection, enum_lookup: &EnumLookup, flag_lookup: &FlagLookup) {
         self.poll_live(conn);
-        self.draw(ui, false, enum_lookup);
+        self.draw(ui, false, enum_lookup, flag_lookup);
     }
 
-    pub fn show_replay(&mut self, ui: &mut egui::Ui, enum_lookup: &EnumLookup) {
-        self.draw(ui, true, enum_lookup);
+    pub fn show_replay(&mut self, ui: &mut egui::Ui, enum_lookup: &EnumLookup, flag_lookup: &FlagLookup) {
+        self.draw(ui, true, enum_lookup, flag_lookup);
     }
 
-    fn draw(&self, ui: &mut egui::Ui, is_replay: bool, enum_lookup: &EnumLookup) {
+    fn draw(&self, ui: &mut egui::Ui, is_replay: bool, enum_lookup: &EnumLookup, flag_lookup: &FlagLookup) {
         ui.horizontal(|ui| {
             if is_replay {
                 ui.label(format!("Signals: {}  (replay)", self.rows.len()));
@@ -165,7 +165,7 @@ impl SignalTableTab {
                     let r = &self.rows[row.index()];
                     row.col(|ui| { ui.label(&r.message); });
                     row.col(|ui| { ui.label(&r.signal); });
-                    row.col(|ui| { ui.label(format_value(r.value, &r.message, &r.signal, enum_lookup)); });
+                    row.col(|ui| { ui.label(format_value(r.value, &r.message, &r.signal, enum_lookup, flag_lookup)); });
                     row.col(|ui| { ui.label(r.reads.to_string()); });
                     row.col(|ui| { ui.label(fmt_ts_ms(r.ts_ms)); });
                     row.col(|ui| { ui.label(format!("0x{:03X}", r.can_id)); });
@@ -180,7 +180,17 @@ fn fmt_ts_ms(ts_ms: i64) -> String {
         .unwrap_or_default()
 }
 
-fn format_value(value: f64, message: &str, signal: &str, enum_lookup: &EnumLookup) -> String {
+fn format_value(
+    value: f64,
+    message: &str,
+    signal: &str,
+    enum_lookup: &EnumLookup,
+    flag_lookup: &FlagLookup,
+) -> String {
+    // Bitfields first: several flags can be active at once, so list them all.
+    if let Some(bits) = flag_lookup.get(&(message.to_string(), signal.to_string())) {
+        return can_config::format_flags(value, bits);
+    }
     if let Some(map) = enum_lookup.get(&(message.to_string(), signal.to_string())) {
         let key = (value as i64).to_string();
         if let Some(label) = map.get(&key) {

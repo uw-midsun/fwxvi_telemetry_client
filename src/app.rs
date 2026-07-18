@@ -1,5 +1,5 @@
 use crate::config::{db_path, AppConfig};
-use crate::decoder::can_config::{self, EnumLookup};
+use crate::decoder::can_config::{self, EnumLookup, FlagLookup};
 use crate::decoder::DecoderCmd;
 use crate::replay::{ReplayController, SPEEDS};
 use crate::tabs::{
@@ -40,6 +40,7 @@ pub struct TelemetryApp {
     replay:        Option<ReplayController>,
 
     enum_lookup:   EnumLookup,
+    flag_lookup:   FlagLookup,
 
     dark_mode:     bool,
 }
@@ -52,9 +53,12 @@ impl TelemetryApp {
 
         let messages = can_config::load(&resolve_yaml(&cfg.can_yaml_path)).unwrap_or_default();
         let enum_lookup = can_config::build_enum_lookup(&messages);
+        let flag_lookup = can_config::build_flag_lookup(&messages);
 
-        // Start in dark mode; the tab bar has a toggle to switch to light.
-        cc.egui_ctx.set_visuals(egui::Visuals::dark());
+        // Start in dark mode; the tab bar has a toggle to switch to light. Setting
+        // the theme *preference* (not just visuals) stops eframe from following the
+        // system theme and repainting us into light mode after startup.
+        cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
 
         Self {
             cfg: cfg.clone(),
@@ -70,6 +74,7 @@ impl TelemetryApp {
             decoder_tx:    None,
             replay:        None,
             enum_lookup,
+            flag_lookup,
             dark_mode:     true,
         }
     }
@@ -95,17 +100,20 @@ impl TelemetryApp {
         let db   = db_path();
         let yaml = resolve_yaml(&self.cfg.can_yaml_path);
 
-        // Refresh enum lookup in case the YAML path changed since startup
+        // Refresh enum/flag lookups in case the YAML path changed since startup
         if let Ok(messages) = can_config::load(&yaml) {
             self.enum_lookup = can_config::build_enum_lookup(&messages);
+            self.flag_lookup = can_config::build_flag_lookup(&messages);
         }
 
         thread::spawn(move || crate::decoder::run(port, rx, db, yaml));
 
         // Skip past any rows a previous session left in the DB, so the live table
-        // shows only data from this capture instead of replaying old samples.
+        // and cells grid show only data from this capture instead of replaying
+        // old samples.
         if let Some(conn) = self.db_conn.as_ref() {
             self.signal_table.reset_to_latest(conn);
+            self.cells_tab.reset_to_latest(conn);
         }
 
         self.decoder_tx = Some(tx);
@@ -183,12 +191,12 @@ impl eframe::App for TelemetryApp {
                     let icon = if self.dark_mode { "☀ Light" } else { "🌙 Dark" };
                     if ui.button(icon).on_hover_text("Toggle light / dark theme").clicked() {
                         self.dark_mode = !self.dark_mode;
-                        let visuals = if self.dark_mode {
-                            egui::Visuals::dark()
+                        let theme = if self.dark_mode {
+                            egui::ThemePreference::Dark
                         } else {
-                            egui::Visuals::light()
+                            egui::ThemePreference::Light
                         };
-                        ctx.set_visuals(visuals);
+                        ctx.set_theme(theme);
                     }
                     ui.separator();
 
@@ -223,15 +231,15 @@ impl eframe::App for TelemetryApp {
             match self.active_tab {
                 Tab::SignalTable => {
                     if self.replay.is_some() {
-                        self.signal_table.show_replay(ui, &self.enum_lookup);
+                        self.signal_table.show_replay(ui, &self.enum_lookup, &self.flag_lookup);
                     } else if let Some(ref conn) = self.db_conn {
-                        self.signal_table.show(ui, conn, &self.enum_lookup);
+                        self.signal_table.show(ui, conn, &self.enum_lookup, &self.flag_lookup);
                     } else {
                         ui.label("Database unavailable.");
                     }
                 }
                 Tab::Dashboard => {
-                    self.dashboard.show(ui, self.db_conn.as_ref(), &self.enum_lookup);
+                    self.dashboard.show(ui, self.db_conn.as_ref(), &self.enum_lookup, &self.flag_lookup);
                 }
                 Tab::Cells => {
                     self.cells_tab.show(ui, self.db_conn.as_ref());
